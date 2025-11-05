@@ -10,6 +10,7 @@ use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
 #[tokio::main]
 async fn main() -> Result<()> {
     run_http_server("github", |_config, _tracker| {
+        Box::pin(async move {
         let mut tool_router = ToolRouter::new();
         let mut prompt_router = PromptRouter::new();
         let managers = Managers::new();
@@ -53,6 +54,7 @@ async fn main() -> Result<()> {
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchUsersTool);
 
         Ok(RouterSet::new(tool_router, prompt_router, managers))
+        })
     })
     .await
 }
