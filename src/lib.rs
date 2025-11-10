@@ -73,3 +73,80 @@ pub use tool::{
     SearchIssuesTool, SearchRepositoriesTool, SearchUsersTool, UpdateIssueTool,
     UpdatePullRequestTool,
 };
+
+/// Start the HTTP server programmatically for embedded mode
+///
+/// This is called by kodegend instead of spawning an external process.
+/// Blocks until the server shuts down.
+///
+/// # Arguments
+/// * `addr` - Socket address to bind to (e.g., "127.0.0.1:30451")
+/// * `tls_cert` - Optional path to TLS certificate file
+/// * `tls_key` - Optional path to TLS private key file
+///
+/// # Returns
+/// ServerHandle for graceful shutdown, or error if startup fails
+#[cfg(feature = "mcp")]
+pub async fn start_server(
+    addr: std::net::SocketAddr,
+    tls_cert: Option<std::path::PathBuf>,
+    tls_key: Option<std::path::PathBuf>,
+) -> anyhow::Result<kodegen_server_http::ServerHandle> {
+    use kodegen_server_http::{create_http_server, Managers, RouterSet, register_tool};
+    use rmcp::handler::server::router::{prompt::PromptRouter, tool::ToolRouter};
+    use std::time::Duration;
+
+    let tls_config = match (tls_cert, tls_key) {
+        (Some(cert), Some(key)) => Some((cert, key)),
+        _ => None,
+    };
+
+    let shutdown_timeout = Duration::from_secs(30);
+
+    create_http_server("github", addr, tls_config, shutdown_timeout, |_config, _tracker| {
+        Box::pin(async move {
+            let mut tool_router = ToolRouter::new();
+            let mut prompt_router = PromptRouter::new();
+            let managers = Managers::new();
+
+            // Register all GitHub tools (zero-state structs, no constructors)
+            
+            // Issue tools (7)
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreateIssueTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetIssueTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListIssuesTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, UpdateIssueTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchIssuesTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, AddIssueCommentTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetIssueCommentsTool);
+
+            // Pull Request tools (9)
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreatePullRequestTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, UpdatePullRequestTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, MergePullRequestTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestStatusTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestFilesTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestReviewsTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreatePullRequestReviewTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, AddPullRequestReviewCommentTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, RequestCopilotReviewTool);
+
+            // Repository tools (2)
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreateRepositoryTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ForkRepositoryTool);
+
+            // Branch/Commit tools (4)
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListBranchesTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreateBranchTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListCommitsTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetCommitTool);
+
+            // Search tools (3)
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchCodeTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchRepositoriesTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchUsersTool);
+
+            Ok(RouterSet::new(tool_router, prompt_router, managers))
+        })
+    }).await
+}
