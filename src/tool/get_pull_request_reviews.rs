@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 use tokio_stream::StreamExt;
 
@@ -14,7 +14,7 @@ impl Tool for GetPullRequestReviewsTool {
     type PromptArgs = GetPullRequestReviewsPromptArgs;
 
     fn name() -> &'static str {
-        "get_pull_request_reviews"
+        "github_get_pull_request_reviews"
     }
 
     fn description() -> &'static str {
@@ -38,7 +38,7 @@ impl Tool for GetPullRequestReviewsTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -52,7 +52,7 @@ impl Tool for GetPullRequestReviewsTool {
 
         // Call API wrapper (returns AsyncStream<Result<Review, GitHubError>>)
         let mut review_stream =
-            client.get_pull_request_reviews(args.owner, args.repo, args.pull_number);
+            client.get_pull_request_reviews(args.owner.clone(), args.repo.clone(), args.pull_number);
 
         // Collect stream into vector
         let mut reviews = Vec::new();
@@ -62,11 +62,68 @@ impl Tool for GetPullRequestReviewsTool {
             reviews.push(review);
         }
 
-        // Return serialized reviews
-        Ok(json!({
+        // Count reviews by state
+        let approved = reviews.iter().filter(|r| r.state.as_deref() == Some("APPROVED")).count();
+        let changes_requested = reviews.iter().filter(|r| r.state.as_deref() == Some("CHANGES_REQUESTED")).count();
+        let commented = reviews.iter().filter(|r| r.state.as_deref() == Some("COMMENTED")).count();
+
+        // Build human-readable summary
+        let review_preview = reviews
+            .iter()
+            .take(5)
+            .map(|r| {
+                let state = r.state.as_deref().unwrap_or("UNKNOWN");
+                let emoji = match state {
+                    "APPROVED" => "✅",
+                    "CHANGES_REQUESTED" => "🔴",
+                    "COMMENTED" => "💬",
+                    "DISMISSED" => "🚫",
+                    "PENDING" => "⏳",
+                    _ => "❓",
+                };
+                let user = r.user.as_ref().map(|u| u.login.as_str()).unwrap_or("unknown");
+                let submitted = r.submitted_at.as_deref().unwrap_or("unknown");
+                format!("  {} {} by @{} at {}", emoji, state, user, submitted)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if reviews.len() > 5 {
+            format!("\n  ... and {} more reviews", reviews.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let summary = format!(
+            "📝 Retrieved {} review(s) for PR #{}\n\n\
+             Repository: {}/{}\n\
+             Approvals: ✅ {}\n\
+             Changes Requested: 🔴 {}\n\
+             Comments: 💬 {}\n\n\
+             Recent Reviews:\n{}{}",
+            reviews.len(),
+            args.pull_number,
+            args.owner,
+            args.repo,
+            approved,
+            changes_requested,
+            commented,
+            review_preview,
+            more_indicator
+        );
+
+        // Serialize full metadata
+        let result = json!({
             "reviews": reviews,
             "count": reviews.len()
-        }))
+        });
+        let json_str = serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

@@ -2,7 +2,7 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::SearchRepositoriesArgs;
 use octocrab::Octocrab;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 /// Tool for searching GitHub repositories
@@ -13,7 +13,7 @@ impl Tool for SearchRepositoriesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "search_repositories"
+        "github_search_repositories"
     }
 
     fn description() -> &'static str {
@@ -36,7 +36,7 @@ impl Tool for SearchRepositoriesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -49,12 +49,12 @@ impl Tool for SearchRepositoriesTool {
 
         let mut request = octocrab.search().repositories(&args.query);
 
-        if let Some(sort_val) = args.sort {
-            request = request.sort(&sort_val);
+        if let Some(sort_val) = &args.sort {
+            request = request.sort(sort_val);
         }
 
-        if let Some(order_val) = args.order {
-            request = request.order(&order_val);
+        if let Some(order_val) = &args.order {
+            request = request.order(order_val);
         }
 
         if let Some(p) = args.page {
@@ -70,7 +70,71 @@ impl Tool for SearchRepositoriesTool {
             .await
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&page)?)
+        // Serialize to JSON for processing
+        let page_json = serde_json::to_value(&page)?;
+
+        // Build human-readable summary
+        let total_count = page_json.get("total_count").and_then(|t| t.as_u64()).unwrap_or(0);
+        let incomplete = page_json.get("incomplete_results").and_then(|i| i.as_bool()).unwrap_or(false);
+        let items = page_json.get("items").and_then(|i| i.as_array()).unwrap_or(&vec![]);
+
+        let result_preview = items
+            .iter()
+            .take(5)
+            .filter_map(|item| {
+                let full_name = item.get("full_name")?.as_str()?;
+                let description = item.get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("No description");
+                let stars = item.get("stargazers_count")?.as_u64()?;
+                let language = item.get("language")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("Unknown");
+                
+                let desc_preview = if description.len() > 60 {
+                    format!("{}...", &description[..60])
+                } else {
+                    description.to_string()
+                };
+                
+                Some(format!("  ⭐ {} stars - {} [{}]\n      {}", stars, full_name, language, desc_preview))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if items.len() > 5 {
+            format!("\n  ... and {} more repositories", items.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let incomplete_warning = if incomplete {
+            "\n\n⚠️  Search results may be incomplete (query timed out)"
+        } else {
+            ""
+        };
+
+        let summary = format!(
+            "🔍 Repository search: \"{}\"\n\n\
+             Total matches: {}\n\
+             Results in this page: {}\n\n\
+             Top results:\n{}{}{}",
+            args.query,
+            total_count,
+            items.len(),
+            result_preview,
+            more_indicator,
+            incomplete_warning
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&page_json)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

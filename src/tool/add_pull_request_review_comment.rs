@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 /// Tool for adding inline review comments to a pull request
@@ -13,7 +13,7 @@ impl Tool for AddPullRequestReviewCommentTool {
     type PromptArgs = AddPullRequestReviewCommentPromptArgs;
 
     fn name() -> &'static str {
-        "add_pull_request_review_comment"
+        "github_add_pull_request_review_comment"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for AddPullRequestReviewCommentTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -51,17 +51,17 @@ impl Tool for AddPullRequestReviewCommentTool {
 
         // Build request
         let request = crate::github::AddPullRequestReviewCommentRequest {
-            owner: args.owner,
-            repo: args.repo,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
             pr_number: args.pull_number,
-            body: args.body,
-            commit_id: args.commit_id,
-            path: args.path,
+            body: args.body.clone(),
+            commit_id: args.commit_id.clone(),
+            path: args.path.clone(),
             line: args.line,
-            side: args.side,
+            side: args.side.clone(),
             start_line: args.start_line,
-            start_side: args.start_side,
-            subject_type: args.subject_type,
+            start_side: args.start_side.clone(),
+            subject_type: args.subject_type.clone(),
             in_reply_to: args.in_reply_to,
         };
 
@@ -76,8 +76,56 @@ impl Tool for AddPullRequestReviewCommentTool {
         let comment =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return serialized comment
-        Ok(serde_json::to_value(&comment)?)
+        // Build human-readable summary
+        let comment_type = if args.in_reply_to.is_some() {
+            "threaded reply"
+        } else if args.start_line.is_some() {
+            "multi-line comment"
+        } else {
+            "inline comment"
+        };
+
+        let body_preview = if args.body.len() > 80 {
+            format!("{}...", &args.body[..80])
+        } else {
+            args.body.clone()
+        };
+
+        let location = if let Some(in_reply_to) = args.in_reply_to {
+            format!("Reply to comment #{}", in_reply_to)
+        } else if let Some(path) = &args.path {
+            if let Some(start_line) = args.start_line {
+                format!("{}:{}-{}", path, start_line, args.line.unwrap_or(0))
+            } else {
+                format!("{}:{}", path, args.line.unwrap_or(0))
+            }
+        } else {
+            "Unknown location".to_string()
+        };
+
+        let summary = format!(
+            "💬 Added {} to PR #{}\n\n\
+             Repository: {}/{}\n\
+             Location: {}\n\n\
+             Comment:\n{}\n\n\
+             Comment ID: {}",
+            comment_type,
+            args.pull_number,
+            args.owner,
+            args.repo,
+            location,
+            body_preview,
+            comment.id
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&comment)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

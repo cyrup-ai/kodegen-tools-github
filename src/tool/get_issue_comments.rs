@@ -4,7 +4,7 @@ use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{GetIssueCommentsArgs, GetIssueCommentsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 
 /// Tool for fetching all comments on a GitHub issue
@@ -16,7 +16,7 @@ impl Tool for GetIssueCommentsTool {
     type PromptArgs = GetIssueCommentsPromptArgs;
 
     fn name() -> &'static str {
-        "get_issue_comments"
+        "github_get_issue_comments"
     }
 
     fn description() -> &'static str {
@@ -41,7 +41,7 @@ impl Tool for GetIssueCommentsTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -65,8 +65,59 @@ impl Tool for GetIssueCommentsTool {
             comments.push(comment);
         }
 
-        // Return serialized comments
-        Ok(json!({ "comments": comments, "count": comments.len() }))
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let preview_count = comments.len().min(5);
+        let comment_previews = comments.iter()
+            .take(preview_count)
+            .map(|c| {
+                let author = c.user.as_ref().map_or("unknown", |u| u.login.as_str());
+                let body_preview = if c.body.as_ref().map_or(0, |b| b.len()) > 80 {
+                    format!("{}...", c.body.as_ref().map_or("", |b| &b[..80]))
+                } else {
+                    c.body.clone().unwrap_or_default()
+                };
+                format!(
+                    "  @{}: {}",
+                    author,
+                    body_preview
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let summary = format!(
+            "💬 Retrieved {} comments from issue #{}\n\n\
+             Repository: {}/{}\n\
+             Total comments: {}\n\n\
+             Recent comments:\n{}\n{}\n\n\
+             Use github_add_issue_comment to add a comment",
+            comments.len(),
+            args.issue_number,
+            args.owner,
+            args.repo,
+            comments.len(),
+            comment_previews,
+            if comments.len() > preview_count {
+                format!("\n  (showing {preview_count} of {})", comments.len())
+            } else {
+                String::new()
+            }
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let metadata = json!({
+            "comments": comments,
+            "count": comments.len()
+        });
+        let json_str = serde_json::to_string_pretty(&metadata)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::SearchCodeArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for SearchCodeTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "search_code"
+        "github_search_code"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for SearchCodeTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -49,9 +49,9 @@ impl Tool for SearchCodeTool {
 
         let task_result = client
             .search_code(
-                args.query,
-                args.sort,
-                args.order,
+                args.query.clone(),
+                args.sort.clone(),
+                args.order.clone(),
                 args.page,
                 args.per_page,
                 args.enrich_stars,
@@ -64,7 +64,56 @@ impl Tool for SearchCodeTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&page)?)
+        // Build human-readable summary
+        let total_count = page.get("total_count").and_then(|t| t.as_u64()).unwrap_or(0);
+        let incomplete = page.get("incomplete_results").and_then(|i| i.as_bool()).unwrap_or(false);
+        let items = page.get("items").and_then(|i| i.as_array()).unwrap_or(&vec![]);
+
+        let result_preview = items
+            .iter()
+            .take(5)
+            .filter_map(|item| {
+                let name = item.get("name")?.as_str()?;
+                let path = item.get("path")?.as_str()?;
+                let repo_name = item.get("repository")?.get("full_name")?.as_str()?;
+                Some(format!("  📄 {} ({})\n      in {}", name, path, repo_name))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if items.len() > 5 {
+            format!("\n  ... and {} more results", items.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let incomplete_warning = if incomplete {
+            "\n\n⚠️  Search results may be incomplete (query timed out)"
+        } else {
+            ""
+        };
+
+        let summary = format!(
+            "🔍 Code search: \"{}\"\n\n\
+             Total matches: {}\n\
+             Results in this page: {}\n\n\
+             Top results:\n{}{}{}",
+            args.query,
+            total_count,
+            items.len(),
+            result_preview,
+            more_indicator,
+            incomplete_warning
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&page)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

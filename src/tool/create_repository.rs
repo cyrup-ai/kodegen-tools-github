@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreateRepositoryArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for CreateRepositoryTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "create_repository"
+        "github_create_repository"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for CreateRepositoryTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -48,7 +48,7 @@ impl Tool for CreateRepositoryTool {
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
         let task_result = client
-            .create_repository(args.name, args.description, args.private, args.auto_init)
+            .create_repository(args.name.clone(), args.description.clone(), args.private, args.auto_init)
             .await;
 
         let api_result =
@@ -57,7 +57,40 @@ impl Tool for CreateRepositoryTool {
         let repository =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&repository)?)
+        // Build human-readable summary
+        let visibility = if args.private.unwrap_or(false) { "🔒 Private" } else { "🌍 Public" };
+        let initialized = if args.auto_init.unwrap_or(false) { "✓ Initialized with README" } else { "Empty (no initial commit)" };
+        
+        let description_text = args.description
+            .as_ref()
+            .map(|d| format!("\nDescription: {}", d))
+            .unwrap_or_default();
+
+        let summary = format!(
+            "✨ Created repository: {}\n\n\
+             Visibility: {}\n\
+             Status: {}{}\n\n\
+             Clone URLs:\n\
+             • HTTPS: {}\n\
+             • SSH: {}\n\n\
+             View on GitHub: {}",
+            repository.full_name.as_deref().unwrap_or(&args.name),
+            visibility,
+            initialized,
+            description_text,
+            repository.clone_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
+            repository.ssh_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
+            repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&repository)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

@@ -1,7 +1,7 @@
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::GetFileContentsArgs;
 use serde_json::Value;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use anyhow;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for GetFileContentsTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "get_file_contents"
+        "github_get_file_contents"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for GetFileContentsTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
                 "GITHUB_TOKEN environment variable not set"
@@ -50,10 +50,10 @@ impl Tool for GetFileContentsTool {
 
         let task_result = client
             .get_file_contents(
-                args.owner,
-                args.repo,
-                args.path,
-                args.ref_name,
+                args.owner.clone(),
+                args.repo.clone(),
+                args.path.clone(),
+                args.ref_name.clone(),
             )
             .await;
 
@@ -63,7 +63,81 @@ impl Tool for GetFileContentsTool {
         let contents = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
 
-        Ok(serde_json::to_value(&contents)?)
+        // Build human-readable summary
+        let ref_info = args.ref_name
+            .as_ref()
+            .map(|r| format!("\nRef: {}", r))
+            .unwrap_or_else(|| "\nRef: default branch".to_string());
+
+        let summary = if contents.is_array() {
+            // Directory listing
+            let items = contents.as_array().unwrap();
+            let item_preview = items
+                .iter()
+                .take(10)
+                .filter_map(|item| {
+                    let name = item.get("name")?.as_str()?;
+                    let type_str = item.get("type")?.as_str()?;
+                    let emoji = if type_str == "dir" { "📁" } else { "📄" };
+                    Some(format!("  {} {}", emoji, name))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let more_indicator = if items.len() > 10 {
+                format!("\n  ... and {} more items", items.len() - 10)
+            } else {
+                String::new()
+            };
+
+            format!(
+                "📂 Retrieved directory contents: {}\n\n\
+                 Repository: {}/{}{}\n\
+                 Total items: {}\n\n\
+                 Contents:\n{}{}",
+                args.path,
+                args.owner,
+                args.repo,
+                ref_info,
+                items.len(),
+                item_preview,
+                more_indicator
+            )
+        } else {
+            // Single file
+            let name = contents.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let size = contents.get("size")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let sha = contents.get("sha")
+                .and_then(|v| v.as_str())
+                .unwrap_or("N/A");
+
+            format!(
+                "📄 Retrieved file: {}\n\n\
+                 Repository: {}/{}{}\n\
+                 Size: {} bytes\n\
+                 SHA: {}\n\n\
+                 Note: Content is base64-encoded in JSON response",
+                name,
+                args.owner,
+                args.repo,
+                ref_info,
+                size,
+                sha
+            )
+        };
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&contents)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

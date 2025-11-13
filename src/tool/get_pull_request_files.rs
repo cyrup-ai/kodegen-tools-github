@@ -2,7 +2,7 @@ use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::GetPullRequestFilesArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 
 use crate::GitHubClient;
@@ -15,7 +15,7 @@ impl Tool for GetPullRequestFilesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "get_pull_request_files"
+        "github_get_pull_request_files"
     }
 
     fn description() -> &'static str {
@@ -38,7 +38,7 @@ impl Tool for GetPullRequestFilesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -57,10 +57,58 @@ impl Tool for GetPullRequestFilesTool {
             files.push(file);
         }
 
-        Ok(json!({
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let preview_count = files.len().min(10);
+        let file_previews = files.iter()
+            .take(preview_count)
+            .map(|f| {
+                format!(
+                    "  {} (+{} -{}) {}",
+                    f.status,
+                    f.additions,
+                    f.deletions,
+                    f.filename
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let total_additions: usize = files.iter().map(|f| f.additions).sum();
+        let total_deletions: usize = files.iter().map(|f| f.deletions).sum();
+
+        let summary = format!(
+            "📁 Retrieved {} changed files from PR #{}\n\n\
+             Repository: {}/{}\n\
+             Total changes: +{} -{}\n\n\
+             Files:\n{}\n{}",
+            files.len(),
+            args.pr_number,
+            args.owner,
+            args.repo,
+            total_additions,
+            total_deletions,
+            file_previews,
+            if files.len() > preview_count {
+                format!("\n  (showing {preview_count} of {})", files.len())
+            } else {
+                String::new()
+            }
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let metadata = json!({
             "files": files,
             "count": files.len()
-        }))
+        });
+        let json_str = serde_json::to_string_pretty(&metadata)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

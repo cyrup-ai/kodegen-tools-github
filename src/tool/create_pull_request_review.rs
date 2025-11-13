@@ -2,7 +2,7 @@ use anyhow;
 use kodegen_mcp_schema::github::{CreatePullRequestReviewArgs, CreatePullRequestReviewPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use octocrab::models::pulls::ReviewAction;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 /// Tool for creating a review on a pull request
@@ -14,7 +14,7 @@ impl Tool for CreatePullRequestReviewTool {
     type PromptArgs = CreatePullRequestReviewPromptArgs;
 
     fn name() -> &'static str {
-        "create_pull_request_review"
+        "github_create_pull_request_review"
     }
 
     fn description() -> &'static str {
@@ -38,7 +38,7 @@ impl Tool for CreatePullRequestReviewTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -63,17 +63,19 @@ impl Tool for CreatePullRequestReviewTool {
             }
         };
 
+        let event_str = args.event.to_uppercase();
+
         // Build options struct
         let options = crate::CreatePullRequestReviewOptions {
             event,
-            body: args.body,
-            commit_id: args.commit_id,
+            body: args.body.clone(),
+            commit_id: args.commit_id.clone(),
             comments: None, // Inline comments not supported in this tool
         };
 
         // Call API wrapper (returns AsyncTask<Result<Review, GitHubError>>)
         let task_result = client
-            .create_pull_request_review(args.owner, args.repo, args.pull_number, options)
+            .create_pull_request_review(args.owner.clone(), args.repo.clone(), args.pull_number, options)
             .await;
 
         // Handle outer Result (channel error)
@@ -84,8 +86,53 @@ impl Tool for CreatePullRequestReviewTool {
         let review =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return serialized review
-        Ok(serde_json::to_value(&review)?)
+        // Build human-readable summary
+        let emoji = match event_str.as_str() {
+            "APPROVE" => "✅",
+            "REQUEST_CHANGES" => "🔴",
+            "COMMENT" => "💬",
+            _ => "📝",
+        };
+
+        let body_preview = args.body
+            .as_deref()
+            .map(|b| {
+                let preview = if b.len() > 100 {
+                    format!("{}...", &b[..100])
+                } else {
+                    b.to_string()
+                };
+                format!("\n\nComment:\n{}", preview)
+            })
+            .unwrap_or_default();
+
+        let commit_info = args.commit_id
+            .as_ref()
+            .map(|c| format!("\nCommit: {}", c))
+            .unwrap_or_else(|| "\nCommit: latest".to_string());
+
+        let summary = format!(
+            "{} Submitted {} review on PR #{}\n\n\
+             Repository: {}/{}{}{}\n\n\
+             Review ID: {}",
+            emoji,
+            event_str,
+            args.pull_number,
+            args.owner,
+            args.repo,
+            commit_info,
+            body_preview,
+            review.id
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&review)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

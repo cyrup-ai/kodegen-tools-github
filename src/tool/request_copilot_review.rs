@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{RequestCopilotReviewArgs, RequestCopilotReviewPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 
 /// Tool for requesting GitHub Copilot to review a pull request
@@ -13,7 +13,7 @@ impl Tool for RequestCopilotReviewTool {
     type PromptArgs = RequestCopilotReviewPromptArgs;
 
     fn name() -> &'static str {
-        "request_copilot_review"
+        "github_request_copilot_review"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for RequestCopilotReviewTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -51,7 +51,7 @@ impl Tool for RequestCopilotReviewTool {
 
         // Call API wrapper (returns AsyncTask<Result<(), GitHubError>>)
         let task_result = client
-            .request_copilot_review(args.owner, args.repo, args.pull_number)
+            .request_copilot_review(args.owner.clone(), args.repo.clone(), args.pull_number)
             .await;
 
         // Handle outer Result (channel error)
@@ -61,11 +61,32 @@ impl Tool for RequestCopilotReviewTool {
         // Handle inner Result (GitHub API error)
         api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return success message (convert unit to JSON)
-        Ok(json!({
+        // Build human-readable summary
+        let summary = format!(
+            "🤖 Requested GitHub Copilot review for PR #{}\n\n\
+             Repository: {}/{}\n\n\
+             ✓ Review request submitted successfully\n\n\
+             Next steps:\n\
+             • Wait a few moments for Copilot to analyze the PR\n\
+             • Check PR comments for Copilot's feedback\n\
+             • Use github_get_pull_request_reviews to see all reviews",
+            args.pull_number,
+            args.owner,
+            args.repo
+        );
+
+        // Serialize metadata
+        let result = json!({
             "success": true,
             "message": "Copilot review requested successfully"
-        }))
+        });
+        let json_str = serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

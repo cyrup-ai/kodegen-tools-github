@@ -4,7 +4,7 @@ use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{ListIssuesArgs, ListIssuesPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 
 use crate::github::ListIssuesRequest;
@@ -18,7 +18,7 @@ impl Tool for ListIssuesTool {
     type PromptArgs = ListIssuesPromptArgs;
 
     fn name() -> &'static str {
-        "list_issues"
+        "github_list_issues"
     }
 
     fn description() -> &'static str {
@@ -43,7 +43,7 @@ impl Tool for ListIssuesTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -94,8 +94,63 @@ impl Tool for ListIssuesTool {
             issues.push(issue);
         }
 
-        // Return serialized issues
-        Ok(json!({ "issues": issues, "count": issues.len() }))
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let state_str = args.state.as_ref()
+            .map_or("all", |s| s.as_str());
+        
+        let preview_count = issues.len().min(10);
+        let issue_previews = issues.iter()
+            .take(preview_count)
+            .map(|i| {
+                let labels = i.labels.iter()
+                    .map(|l| &l.name)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "  #{} [{}] {} {} - @{}",
+                    i.number,
+                    i.state,
+                    i.title,
+                    if labels.is_empty() { String::new() } else { format!("({labels})") },
+                    i.user.login
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let summary = format!(
+            "📋 Listed {} issues from {}/{}\n\n\
+             State: {}\n\
+             Total: {} issues\n\n\
+             Recent issues:\n{}\n{}\n\n\
+             Use github_get_issue to view details",
+            issues.len(),
+            args.owner,
+            args.repo,
+            state_str,
+            issues.len(),
+            issue_previews,
+            if issues.len() > preview_count {
+                format!("  (showing {preview_count} of {})", issues.len())
+            } else {
+                String::new()
+            }
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let metadata = json!({
+            "issues": issues,
+            "count": issues.len()
+        });
+        let json_str = serde_json::to_string_pretty(&metadata)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

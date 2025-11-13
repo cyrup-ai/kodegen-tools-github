@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::UpdatePullRequestArgs;
 use kodegen_mcp_tool::{McpError, Tool};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for UpdatePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "update_pull_request"
+        "github_update_pull_request"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for UpdatePullRequestTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -58,15 +58,15 @@ impl Tool for UpdatePullRequestTool {
             });
 
         let options = crate::UpdatePullRequestOptions {
-            title: args.title,
-            body: args.body,
+            title: args.title.clone(),
+            body: args.body.clone(),
             state,
-            base: args.base,
+            base: args.base.clone(),
             maintainer_can_modify: args.maintainer_can_modify,
         };
 
         let task_result = client
-            .update_pull_request(args.owner, args.repo, args.pr_number, options)
+            .update_pull_request(args.owner.clone(), args.repo.clone(), args.pr_number, options)
             .await;
 
         let api_result =
@@ -75,7 +75,57 @@ impl Tool for UpdatePullRequestTool {
         let pr =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&pr)?)
+        // Build human-readable summary
+        let mut changes = Vec::new();
+        if args.title.is_some() {
+            changes.push("title");
+        }
+        if args.body.is_some() {
+            changes.push("description");
+        }
+        if args.state.is_some() {
+            changes.push("state");
+        }
+        if args.base.is_some() {
+            changes.push("base branch");
+        }
+        if args.maintainer_can_modify.is_some() {
+            changes.push("maintainer access");
+        }
+
+        let changes_str = if changes.is_empty() {
+            "no changes".to_string()
+        } else {
+            changes.join(", ")
+        };
+
+        let state_str = pr.state.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+        let state_emoji = if state_str == "open" { "🟢" } else { "⚫" };
+
+        let summary = format!(
+            "✏️ Updated PR #{}: {}\n\n\
+             Repository: {}/{}\n\
+             State: {} {}\n\
+             Changes: {}\n\n\
+             View on GitHub: {}",
+            pr.number,
+            pr.title.as_deref().unwrap_or("Untitled"),
+            args.owner,
+            args.repo,
+            state_emoji,
+            state_str,
+            changes_str,
+            pr.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&pr)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

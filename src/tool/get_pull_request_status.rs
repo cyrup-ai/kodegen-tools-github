@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::GetPullRequestStatusArgs;
 use kodegen_mcp_tool::{McpError, Tool};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for GetPullRequestStatusTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "get_pull_request_status"
+        "github_get_pull_request_status"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for GetPullRequestStatusTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -57,7 +57,41 @@ impl Tool for GetPullRequestStatusTool {
         let status =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&status)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let mergeable_str = if status.mergeable.unwrap_or(false) {
+            "✓ Yes"
+        } else {
+            "✗ No"
+        };
+        
+        let summary = format!(
+            "🔄 Pull Request #{} Status\n\n\
+             Repository: {}/{}\n\
+             Title: {}\n\
+             State: {}\n\
+             Mergeable: {}\n\
+             Merge Status: {}\n\n\
+             Ready to merge: {}",
+            status.number,
+            args.owner,
+            args.repo,
+            status.title.as_ref().map_or("(no title)", |t| t.as_str()),
+            status.state.as_ref().map_or("unknown", |s| s.as_str()),
+            mergeable_str,
+            status.mergeable_state.as_ref().map_or("unknown", |s| s.as_str()),
+            if status.mergeable.unwrap_or(false) { "Yes" } else { "No" }
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&status)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

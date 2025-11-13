@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::ForkRepositoryArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for ForkRepositoryTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "fork_repository"
+        "github_fork_repository"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for ForkRepositoryTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -48,7 +48,7 @@ impl Tool for ForkRepositoryTool {
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
         let task_result = client
-            .fork_repository(args.owner, args.repo, args.organization)
+            .fork_repository(args.owner.clone(), args.repo.clone(), args.organization.clone())
             .await;
 
         let api_result =
@@ -57,7 +57,36 @@ impl Tool for ForkRepositoryTool {
         let repository =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&repository)?)
+        // Build human-readable summary
+        let destination = args.organization
+            .as_ref()
+            .map(|org| format!("organization @{}", org))
+            .unwrap_or_else(|| "your account".to_string());
+
+        let summary = format!(
+            "🍴 Forked {}/{} to {}\n\n\
+             New repository: {}\n\n\
+             Clone URLs:\n\
+             • HTTPS: {}\n\
+             • SSH: {}\n\n\
+             View on GitHub: {}",
+            args.owner,
+            args.repo,
+            destination,
+            repository.full_name.as_deref().unwrap_or("N/A"),
+            repository.clone_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
+            repository.ssh_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
+            repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&repository)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

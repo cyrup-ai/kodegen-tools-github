@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreatePullRequestArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -15,7 +15,7 @@ impl Tool for CreatePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "create_pull_request"
+        "github_create_pull_request"
     }
 
     fn description() -> &'static str {
@@ -38,7 +38,7 @@ impl Tool for CreatePullRequestTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -67,7 +67,36 @@ impl Tool for CreatePullRequestTool {
         let pr =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&pr)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let summary = format!(
+            "✓ Created pull request #{}\n\n\
+             Repository: {}/{}\n\
+             Title: {}\n\
+             Head: {} → Base: {}\n\
+             State: {}\n\
+             Draft: {}\n\n\
+             View on GitHub: {}",
+            pr.number,
+            args.owner,
+            args.repo,
+            pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
+            args.head,
+            args.base,
+            pr.state.as_ref().map_or("unknown", |s| s.as_str()),
+            pr.draft.unwrap_or(false),
+            pr.html_url.as_ref().map_or("", |url| url.as_str())
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&pr)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

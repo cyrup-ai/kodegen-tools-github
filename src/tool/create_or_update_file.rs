@@ -1,7 +1,7 @@
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreateOrUpdateFileArgs;
 use serde_json::Value;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use anyhow;
 
 use crate::GitHubClient;
@@ -15,7 +15,7 @@ impl Tool for CreateOrUpdateFileTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "create_or_update_file"
+        "github_create_or_update_file"
     }
 
     fn description() -> &'static str {
@@ -38,7 +38,7 @@ impl Tool for CreateOrUpdateFileTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
                 "GITHUB_TOKEN environment variable not set"
@@ -49,14 +49,18 @@ impl Tool for CreateOrUpdateFileTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {}", e)))?;
 
+        let is_update = args.sha.is_some();
+        let operation = if is_update { "Updated" } else { "Created" };
+        let emoji = if is_update { "✏️" } else { "✨" };
+
         let request = CreateOrUpdateFileRequest {
-            owner: args.owner,
-            repo: args.repo,
-            path: args.path,
-            message: args.message,
-            content: args.content,
-            branch: args.branch,
-            sha: args.sha,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            path: args.path.clone(),
+            message: args.message.clone(),
+            content: args.content.clone(),
+            branch: args.branch.clone(),
+            sha: args.sha.clone(),
         };
 
         let task_result = client
@@ -69,7 +73,49 @@ impl Tool for CreateOrUpdateFileTool {
         let file_update = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
 
-        Ok(serde_json::to_value(&file_update)?)
+        // Build human-readable summary
+        let branch_info = args.branch
+            .as_ref()
+            .map(|b| format!("\nBranch: {}", b))
+            .unwrap_or_else(|| "\nBranch: default".to_string());
+
+        let content_preview = if args.content.len() > 100 {
+            format!("{}...", &args.content[..100])
+        } else {
+            args.content.clone()
+        };
+
+        let commit_sha = file_update.commit
+            .as_ref()
+            .and_then(|c| c.sha.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("N/A");
+
+        let summary = format!(
+            "{} {} file: {}\n\n\
+             Repository: {}/{}{}\n\
+             Commit: \"{}\"\n\
+             Commit SHA: {}\n\n\
+             Content preview:\n{}",
+            emoji,
+            operation,
+            args.path,
+            args.owner,
+            args.repo,
+            branch_info,
+            args.message,
+            commit_sha,
+            content_preview
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&file_update)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

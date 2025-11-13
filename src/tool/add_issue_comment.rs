@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{AddIssueCommentArgs, AddIssueCommentPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 /// Tool for adding comments to GitHub issues
@@ -15,7 +15,7 @@ impl Tool for AddIssueCommentTool {
     type PromptArgs = AddIssueCommentPromptArgs;
 
     fn name() -> &'static str {
-        "add_issue_comment"
+        "github_add_issue_comment"
     }
 
     fn description() -> &'static str {
@@ -39,7 +39,7 @@ impl Tool for AddIssueCommentTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -65,8 +65,33 @@ impl Tool for AddIssueCommentTool {
         let comment =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return serialized comment
-        Ok(serde_json::to_value(&comment)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let summary = format!(
+            "💬 Added comment to issue #{}\n\n\
+             Repository: {}/{}\n\
+             Issue: #{}\n\
+             Author: @{}\n\
+             Comment ID: {}\n\n\
+             View comment: {}",
+            args.issue_number,
+            args.owner,
+            args.repo,
+            args.issue_number,
+            comment.user.as_ref().map_or("unknown", |u| u.login.as_str()),
+            comment.id,
+            comment.html_url.as_ref().map_or("", |url| url.as_str())
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&comment)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

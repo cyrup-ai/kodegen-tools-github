@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{GetIssueArgs, GetIssuePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 /// Tool for fetching a GitHub issue by number
@@ -15,7 +15,7 @@ impl Tool for GetIssueTool {
     type PromptArgs = GetIssuePromptArgs;
 
     fn name() -> &'static str {
-        "get_issue"
+        "github_get_issue"
     }
 
     fn description() -> &'static str {
@@ -40,7 +40,7 @@ impl Tool for GetIssueTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -66,8 +66,57 @@ impl Tool for GetIssueTool {
         let issue =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return serialized issue
-        Ok(serde_json::to_value(&issue)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let labels_str = issue.labels.iter()
+            .map(|l| &l.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        
+        let assignees_str = issue.assignees.iter()
+            .map(|a| format!("@{}", a.login))
+            .collect::<Vec<_>>()
+            .join(", ");
+        
+        let state_emoji = match issue.state.as_str() {
+            "open" => "🟢",
+            "closed" => "🔴",
+            _ => "⚪",
+        };
+
+        let summary = format!(
+            "🔍 Issue #{}: {}\n\n\
+             Repository: {}/{}\n\
+             State: {} {}\n\
+             Author: @{}\n\
+             Created: {}\n\
+             Comments: {}\n\n\
+             Labels: {}\n\
+             Assignees: {}\n\n\
+             View on GitHub: {}",
+            issue.number,
+            issue.title,
+            args.owner,
+            args.repo,
+            state_emoji,
+            issue.state,
+            issue.user.login,
+            issue.created_at.format("%Y-%m-%d"),
+            issue.comments,
+            if labels_str.is_empty() { "none" } else { &labels_str },
+            if assignees_str.is_empty() { "none" } else { &assignees_str },
+            issue.html_url
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&issue)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

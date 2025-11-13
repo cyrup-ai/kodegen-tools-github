@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{SecretScanningAlertsArgs, SecretScanningAlertsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
 
 /// Tool for listing secret scanning alerts in a GitHub repository
@@ -15,7 +15,7 @@ impl Tool for SecretScanningAlertsTool {
     type PromptArgs = SecretScanningAlertsPromptArgs;
     
     fn name() -> &'static str {
-        "secret_scanning_alerts"
+        "github_secret_scanning_alerts"
     }
     
     fn description() -> &'static str {
@@ -41,7 +41,7 @@ impl Tool for SecretScanningAlertsTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
@@ -56,11 +56,11 @@ impl Tool for SecretScanningAlertsTool {
         
         // Call API wrapper (returns AsyncTask<Result<Vec<SecretScanningAlert>, GitHubError>>)
         let task_result = client.list_secret_scanning_alerts(
-            args.owner,
-            args.repo,
-            args.state,
-            args.secret_type,
-            args.resolution,
+            args.owner.clone(),
+            args.repo.clone(),
+            args.state.clone(),
+            args.secret_type.clone(),
+            args.resolution.clone(),
         ).await;
         
         // Handle outer Result (channel error)
@@ -70,9 +70,72 @@ impl Tool for SecretScanningAlertsTool {
         // Handle inner Result (GitHub API error)
         let alerts = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
+
+        // Build human-readable summary
+        let filters_applied = vec![
+            args.state.as_ref().map(|s| format!("state: {}", s)),
+            args.secret_type.as_ref().map(|t| format!("type: {}", t)),
+            args.resolution.as_ref().map(|r| format!("resolution: {}", r)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ");
+
+        let filters_text = if !filters_applied.is_empty() {
+            format!("\nFilters: {}", filters_applied)
+        } else {
+            String::new()
+        };
+
+        let alert_preview = alerts
+            .iter()
+            .take(5)
+            .filter_map(|alert| {
+                let number = alert.get("number")?.as_u64()?;
+                let state = alert.get("state")?.as_str()?;
+                let secret_type = alert.get("secret_type_display_name")?.as_str()?;
+                
+                let state_emoji = if state == "open" { "🔓" } else { "🔒" };
+                
+                Some(format!("  {} #{} [{}] {}", state_emoji, number, state, secret_type))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if alerts.len() > 5 {
+            format!("\n  ... and {} more alerts", alerts.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let warning_text = if alerts.iter().any(|a| a.get("state").and_then(|s| s.as_str()) == Some("open")) {
+            "\n\n⚠️  WARNING: Open secrets found! Revoke them immediately and use environment variables or secret management."
+        } else {
+            ""
+        };
+
+        let summary = format!(
+            "🔐 Retrieved {} secret scanning alert(s)\n\n\
+             Repository: {}/{}{}\n\n\
+             Recent alerts:\n{}{}{}",
+            alerts.len(),
+            args.owner,
+            args.repo,
+            filters_text,
+            alert_preview,
+            more_indicator,
+            warning_text
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&alerts)
+            .unwrap_or_else(|_| "[]".to_string());
         
-        // Return serialized alerts (Vec<SecretScanningAlert>)
-        Ok(serde_json::to_value(&alerts)?)
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {

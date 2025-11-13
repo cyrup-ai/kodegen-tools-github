@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{UpdateIssueArgs, UpdateIssuePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::github::UpdateIssueRequest;
@@ -17,7 +17,7 @@ impl Tool for UpdateIssueTool {
     type PromptArgs = UpdateIssuePromptArgs;
 
     fn name() -> &'static str {
-        "update_issue"
+        "github_update_issue"
     }
 
     fn description() -> &'static str {
@@ -42,7 +42,7 @@ impl Tool for UpdateIssueTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -89,8 +89,31 @@ impl Tool for UpdateIssueTool {
         let issue =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Return serialized issue
-        Ok(serde_json::to_value(&issue)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let summary = format!(
+            "✓ Updated issue #{}\n\n\
+             Repository: {}/{}\n\
+             Title: {}\n\
+             State: {}\n\n\
+             View on GitHub: {}",
+            issue.number,
+            args.owner,
+            args.repo,
+            issue.title,
+            issue.state,
+            issue.html_url
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&issue)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

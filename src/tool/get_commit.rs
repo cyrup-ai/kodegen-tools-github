@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::GetCommitArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for GetCommitTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "get_commit"
+        "github_get_commit"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for GetCommitTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -49,9 +49,9 @@ impl Tool for GetCommitTool {
 
         let task_result = client
             .get_commit(
-                args.owner,
-                args.repo,
-                args.commit_sha,
+                args.owner.clone(),
+                args.repo.clone(),
+                args.commit_sha.clone(),
                 args.page,
                 args.per_page,
             )
@@ -63,7 +63,76 @@ impl Tool for GetCommitTool {
         let commit =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&commit)?)
+        // Build human-readable summary
+        let commit_message = commit.get("commit")
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("No message");
+        
+        let author_name = commit.get("commit")
+            .and_then(|c| c.get("author"))
+            .and_then(|a| a.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("Unknown");
+        
+        let author_date = commit.get("commit")
+            .and_then(|c| c.get("author"))
+            .and_then(|a| a.get("date"))
+            .and_then(|d| d.as_str())
+            .unwrap_or("Unknown");
+        
+        let additions = commit.get("stats")
+            .and_then(|s| s.get("additions"))
+            .and_then(|a| a.as_u64())
+            .unwrap_or(0);
+        
+        let deletions = commit.get("stats")
+            .and_then(|s| s.get("deletions"))
+            .and_then(|d| d.as_u64())
+            .unwrap_or(0);
+        
+        let files_count = commit.get("files")
+            .and_then(|f| f.as_array())
+            .map(|f| f.len())
+            .unwrap_or(0);
+
+        let message_preview = if commit_message.len() > 100 {
+            format!("{}...", &commit_message[..100])
+        } else {
+            commit_message.to_string()
+        };
+
+        let summary = format!(
+            "📝 Commit: {}\n\n\
+             Repository: {}/{}\n\
+             Author: {}\n\
+             Date: {}\n\n\
+             Message:\n{}\n\n\
+             Changes:\n\
+             • Files changed: {}\n\
+             • Additions: +{}\n\
+             • Deletions: -{}\n\
+             • Total: {} lines",
+            &args.commit_sha[..7.min(args.commit_sha.len())],
+            args.owner,
+            args.repo,
+            author_name,
+            author_date,
+            message_preview,
+            files_count,
+            additions,
+            deletions,
+            additions + deletions
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&commit)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

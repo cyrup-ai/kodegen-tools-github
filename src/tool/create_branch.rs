@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreateBranchArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for CreateBranchTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "create_branch"
+        "github_create_branch"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for CreateBranchTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -48,7 +48,7 @@ impl Tool for CreateBranchTool {
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
         let task_result = client
-            .create_branch(args.owner, args.repo, args.branch_name, args.sha)
+            .create_branch(args.owner.clone(), args.repo.clone(), args.branch_name.clone(), args.sha.clone())
             .await;
 
         let api_result =
@@ -57,7 +57,32 @@ impl Tool for CreateBranchTool {
         let reference =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&reference)?)
+        // Build human-readable summary
+        let ref_name = reference.get("ref")
+            .and_then(|r| r.as_str())
+            .unwrap_or("N/A");
+        
+        let summary = format!(
+            "🌿 Created branch: {}\n\n\
+             Repository: {}/{}\n\
+             From commit: {}\n\
+             Full ref: {}\n\n\
+             ✓ Branch is ready for commits",
+            args.branch_name,
+            args.owner,
+            args.repo,
+            args.sha,
+            ref_name
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&reference)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

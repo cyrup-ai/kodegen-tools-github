@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{GetMeArgs, GetMePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
 
 /// Tool for getting information about the authenticated GitHub user
@@ -15,7 +15,7 @@ impl Tool for GetMeTool {
     type PromptArgs = GetMePromptArgs;
     
     fn name() -> &'static str {
-        "get_me"
+        "github_get_me"
     }
     
     fn description() -> &'static str {
@@ -40,7 +40,7 @@ impl Tool for GetMeTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, _args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, _args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
@@ -64,8 +64,68 @@ impl Tool for GetMeTool {
         let user = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
         
-        // Return serialized user
-        Ok(serde_json::to_value(&user)?)
+        // Build human-readable summary
+        let login = user.get("login").and_then(|l| l.as_str()).unwrap_or("Unknown");
+        let name = user.get("name").and_then(|n| n.as_str()).unwrap_or("No name");
+        let email = user.get("email")
+            .and_then(|e| e.as_str())
+            .map(|e| format!("\nEmail: {}", e))
+            .unwrap_or_default();
+        let bio = user.get("bio")
+            .and_then(|b| b.as_str())
+            .map(|b| format!("\nBio: {}", b))
+            .unwrap_or_default();
+        let company = user.get("company")
+            .and_then(|c| c.as_str())
+            .map(|c| format!("\nCompany: {}", c))
+            .unwrap_or_default();
+        let location = user.get("location")
+            .and_then(|l| l.as_str())
+            .map(|l| format!("\nLocation: {}", l))
+            .unwrap_or_default();
+        let blog = user.get("blog")
+            .and_then(|b| b.as_str())
+            .filter(|b| !b.is_empty())
+            .map(|b| format!("\nWebsite: {}", b))
+            .unwrap_or_default();
+        
+        let public_repos = user.get("public_repos").and_then(|r| r.as_u64()).unwrap_or(0);
+        let followers = user.get("followers").and_then(|f| f.as_u64()).unwrap_or(0);
+        let following = user.get("following").and_then(|f| f.as_u64()).unwrap_or(0);
+        let created_at = user.get("created_at").and_then(|c| c.as_str()).unwrap_or("Unknown");
+        let html_url = user.get("html_url").and_then(|u| u.as_str()).unwrap_or("N/A");
+
+        let summary = format!(
+            "👤 Authenticated as: @{}\n\n\
+             Name: {}{}{}{}{}{}\n\n\
+             Stats:\n\
+             • Public repos: {}\n\
+             • Followers: {}\n\
+             • Following: {}\n\
+             • Account created: {}\n\n\
+             Profile: {}",
+            login,
+            name,
+            email,
+            bio,
+            company,
+            location,
+            blog,
+            public_repos,
+            followers,
+            following,
+            created_at,
+            html_url
+        );
+        
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&user)
+            .unwrap_or_else(|_| "{}".to_string());
+        
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {

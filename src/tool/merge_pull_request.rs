@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::MergePullRequestArgs;
 use kodegen_mcp_tool::{McpError, Tool};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for MergePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "merge_pull_request"
+        "github_merge_pull_request"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for MergePullRequestTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -64,7 +64,31 @@ impl Tool for MergePullRequestTool {
         let merge_result =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&merge_result)?)
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let summary = format!(
+            "✓ Merged pull request #{}\n\n\
+             Repository: {}/{}\n\
+             Merge method: {}\n\
+             SHA: {}\n\
+             Merged: {}",
+            args.pr_number,
+            args.owner,
+            args.repo,
+            args.merge_method.as_ref().map_or("merge", |m| m.as_str()),
+            merge_result.sha.as_ref().map_or("(unknown)", |s| s.as_str()),
+            merge_result.merged
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let json_str = serde_json::to_string_pretty(&merge_result)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

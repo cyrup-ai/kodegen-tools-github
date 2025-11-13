@@ -4,7 +4,7 @@ use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::{Value, json};
 
 /// Tool for searching GitHub issues using GitHub's search syntax
@@ -16,7 +16,7 @@ impl Tool for SearchIssuesTool {
     type PromptArgs = SearchIssuesPromptArgs;
 
     fn name() -> &'static str {
-        "search_issues"
+        "github_search_issues"
     }
 
     fn description() -> &'static str {
@@ -42,7 +42,7 @@ impl Tool for SearchIssuesTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -69,8 +69,56 @@ impl Tool for SearchIssuesTool {
             issues.push(issue);
         }
 
-        // Return serialized issues
-        Ok(json!({ "issues": issues, "count": issues.len() }))
+        // Build dual-content response
+        let mut contents = Vec::new();
+
+        // Content[0]: Human-Readable Summary
+        let preview_count = issues.len().min(10);
+        let issue_previews = issues.iter()
+            .take(preview_count)
+            .map(|i| {
+                let labels = i.labels.iter()
+                    .map(|l| &l.name)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "  #{} [{}] {} {}",
+                    i.number,
+                    i.state,
+                    i.title,
+                    if labels.is_empty() { String::new() } else { format!("({labels})") }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let summary = format!(
+            "🔍 Found {} issues matching query\n\n\
+             Query: {}\n\
+             Total: {} issues\n\n\
+             Top results:\n{}\n{}",
+            issues.len(),
+            args.query,
+            issues.len(),
+            issue_previews,
+            if issues.len() > preview_count {
+                format!("\n  (showing {preview_count} of {})", issues.len())
+            } else {
+                String::new()
+            }
+        );
+        contents.push(Content::text(summary));
+
+        // Content[1]: Machine-Parseable JSON
+        let metadata = json!({
+            "issues": issues,
+            "count": issues.len()
+        });
+        let json_str = serde_json::to_string_pretty(&metadata)
+            .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
+
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

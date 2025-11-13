@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::ListCommitsArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for ListCommitsTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "list_commits"
+        "github_list_commits"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for ListCommitsTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -49,16 +49,16 @@ impl Tool for ListCommitsTool {
 
         // Convert Args to ListCommitsOptions
         let options = crate::github::ListCommitsOptions {
-            sha: args.sha,
-            path: args.path,
-            author: args.author,
-            since: args.since,
-            until: args.until,
+            sha: args.sha.clone(),
+            path: args.path.clone(),
+            author: args.author.clone(),
+            since: args.since.clone(),
+            until: args.until.clone(),
             page: args.page,
             per_page: args.per_page,
         };
 
-        let task_result = client.list_commits(args.owner, args.repo, options).await;
+        let task_result = client.list_commits(args.owner.clone(), args.repo.clone(), options).await;
 
         let api_result =
             task_result.map_err(|e| McpError::Other(anyhow::anyhow!("Task channel error: {e}")))?;
@@ -66,7 +66,73 @@ impl Tool for ListCommitsTool {
         let commits =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&commits)?)
+        // Build human-readable summary
+        let commits_array = commits.as_array().unwrap_or(&vec![]);
+        
+        let filters_applied = vec![
+            args.sha.as_ref().map(|s| format!("branch/sha: {}", s)),
+            args.path.as_ref().map(|p| format!("path: {}", p)),
+            args.author.as_ref().map(|a| format!("author: {}", a)),
+            args.since.as_ref().map(|s| format!("since: {}", s)),
+            args.until.as_ref().map(|u| format!("until: {}", u)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ");
+
+        let filters_text = if !filters_applied.is_empty() {
+            format!("\nFilters: {}", filters_applied)
+        } else {
+            String::new()
+        };
+
+        let commit_preview = commits_array
+            .iter()
+            .take(5)
+            .filter_map(|commit| {
+                let sha = commit.get("sha")?.as_str()?;
+                let message = commit.get("commit")?.get("message")?.as_str()?;
+                let author = commit.get("commit")?.get("author")?.get("name")?.as_str()?;
+                
+                let message_first_line = message.lines().next().unwrap_or(message);
+                let message_preview = if message_first_line.len() > 60 {
+                    format!("{}...", &message_first_line[..60])
+                } else {
+                    message_first_line.to_string()
+                };
+                
+                Some(format!("  📝 {} - {} (@{})", &sha[..7], message_preview, author))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if commits_array.len() > 5 {
+            format!("\n  ... and {} more commits", commits_array.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let summary = format!(
+            "📜 Retrieved {} commit(s)\n\n\
+             Repository: {}/{}{}\n\n\
+             Recent commits:\n{}{}",
+            commits_array.len(),
+            args.owner,
+            args.repo,
+            filters_text,
+            commit_preview,
+            more_indicator
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&commits)
+            .unwrap_or_else(|_| "[]".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

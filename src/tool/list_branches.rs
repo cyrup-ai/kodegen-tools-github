@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::ListBranchesArgs;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::Value;
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for ListBranchesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "list_branches"
+        "github_list_branches"
     }
 
     fn description() -> &'static str {
@@ -37,7 +37,7 @@ impl Tool for ListBranchesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -48,7 +48,7 @@ impl Tool for ListBranchesTool {
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
         let task_result = client
-            .list_branches(args.owner, args.repo, args.page, args.per_page)
+            .list_branches(args.owner.clone(), args.repo.clone(), args.page, args.per_page)
             .await;
 
         let api_result =
@@ -57,7 +57,53 @@ impl Tool for ListBranchesTool {
         let branches =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        Ok(serde_json::to_value(&branches)?)
+        // Build human-readable summary
+        let branches_array = branches.as_array().unwrap_or(&vec![]);
+        
+        let branch_preview = branches_array
+            .iter()
+            .take(10)
+            .filter_map(|branch| {
+                let name = branch.get("name")?.as_str()?;
+                let protected = branch.get("protected")?.as_bool().unwrap_or(false);
+                let protection_emoji = if protected { "🔒" } else { "🌿" };
+                Some(format!("  {} {}", protection_emoji, name))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if branches_array.len() > 10 {
+            format!("\n  ... and {} more branches", branches_array.len() - 10)
+        } else {
+            String::new()
+        };
+
+        let protected_count = branches_array
+            .iter()
+            .filter(|b| b.get("protected").and_then(|p| p.as_bool()).unwrap_or(false))
+            .count();
+
+        let summary = format!(
+            "🌿 Retrieved {} branch(es)\n\n\
+             Repository: {}/{}\n\
+             Protected branches: {}\n\n\
+             Branches:\n{}{}",
+            branches_array.len(),
+            args.owner,
+            args.repo,
+            protected_count,
+            branch_preview,
+            more_indicator
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&branches)
+            .unwrap_or_else(|_| "[]".to_string());
+
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

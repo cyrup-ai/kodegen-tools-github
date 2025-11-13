@@ -3,7 +3,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{CodeScanningAlertsArgs, CodeScanningAlertsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
 
 /// Tool for listing code scanning security alerts in a GitHub repository
@@ -15,7 +15,7 @@ impl Tool for CodeScanningAlertsTool {
     type PromptArgs = CodeScanningAlertsPromptArgs;
     
     fn name() -> &'static str {
-        "code_scanning_alerts"
+        "github_code_scanning_alerts"
     }
     
     fn description() -> &'static str {
@@ -41,7 +41,7 @@ impl Tool for CodeScanningAlertsTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, args: Self::Args) -> Result<Value, McpError> {
+    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
@@ -56,12 +56,12 @@ impl Tool for CodeScanningAlertsTool {
         
         // Call API wrapper (returns AsyncTask<Result<Vec<Value>, GitHubError>>)
         let task_result = client.list_code_scanning_alerts(
-            args.owner,
-            args.repo,
-            args.state,
-            args.ref_name,
-            args.tool_name,
-            args.severity,
+            args.owner.clone(),
+            args.repo.clone(),
+            args.state.clone(),
+            args.ref_name.clone(),
+            args.tool_name.clone(),
+            args.severity.clone(),
         ).await;
         
         // Handle outer Result (channel error)
@@ -71,9 +71,99 @@ impl Tool for CodeScanningAlertsTool {
         // Handle inner Result (GitHub API error)
         let alerts = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
+
+        // Count alerts by severity
+        let mut critical = 0;
+        let mut high = 0;
+        let mut medium = 0;
+        let mut low = 0;
         
-        // Return serialized alerts (Vec<serde_json::Value>)
-        Ok(serde_json::to_value(&alerts)?)
+        for alert in &alerts {
+            if let Some(sev) = alert.get("rule").and_then(|r| r.get("severity")).and_then(|s| s.as_str()) {
+                match sev {
+                    "critical" => critical += 1,
+                    "high" => high += 1,
+                    "medium" => medium += 1,
+                    "low" | "warning" | "note" | "error" => low += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        // Build human-readable summary
+        let filters_applied = vec![
+            args.state.as_ref().map(|s| format!("state: {}", s)),
+            args.ref_name.as_ref().map(|r| format!("branch: {}", r)),
+            args.tool_name.as_ref().map(|t| format!("tool: {}", t)),
+            args.severity.as_ref().map(|s| format!("severity: {}", s)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ");
+
+        let filters_text = if !filters_applied.is_empty() {
+            format!("\nFilters: {}", filters_applied)
+        } else {
+            String::new()
+        };
+
+        let alert_preview = alerts
+            .iter()
+            .take(5)
+            .filter_map(|alert| {
+                let number = alert.get("number")?.as_u64()?;
+                let state = alert.get("state")?.as_str()?;
+                let severity = alert.get("rule")?.get("severity")?.as_str()?;
+                let description = alert.get("rule")?.get("description")?.as_str()?;
+                
+                let sev_emoji = match severity {
+                    "critical" => "🔴",
+                    "high" => "🟠",
+                    "medium" => "🟡",
+                    _ => "🔵",
+                };
+                
+                Some(format!("  {} #{} [{}] {}", sev_emoji, number, state, description))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let more_indicator = if alerts.len() > 5 {
+            format!("\n  ... and {} more alerts", alerts.len() - 5)
+        } else {
+            String::new()
+        };
+
+        let summary = format!(
+            "🛡️ Retrieved {} code scanning alert(s)\n\n\
+             Repository: {}/{}{}\n\n\
+             By severity:\n\
+             🔴 Critical: {}\n\
+             🟠 High: {}\n\
+             🟡 Medium: {}\n\
+             🔵 Low/Other: {}\n\n\
+             Recent alerts:\n{}{}",
+            alerts.len(),
+            args.owner,
+            args.repo,
+            filters_text,
+            critical,
+            high,
+            medium,
+            low,
+            alert_preview,
+            more_indicator
+        );
+
+        // Serialize full metadata
+        let json_str = serde_json::to_string_pretty(&alerts)
+            .unwrap_or_else(|_| "[]".to_string());
+        
+        Ok(vec![
+            Content::text(summary),
+            Content::text(json_str),
+        ])
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {
