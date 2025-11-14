@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreatePullRequestArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 use crate::github::CreatePullRequestRequest;
@@ -49,12 +48,12 @@ impl Tool for CreatePullRequestTool {
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
         let request = CreatePullRequestRequest {
-            owner: args.owner,
-            repo: args.repo,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
             title: args.title,
             body: args.body,
-            head: args.head,
-            base: args.base,
+            head: args.head.clone(),
+            base: args.base.clone(),
             draft: args.draft,
             maintainer_can_modify: args.maintainer_can_modify,
         };
@@ -85,7 +84,7 @@ impl Tool for CreatePullRequestTool {
             pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
             args.head,
             args.base,
-            pr.state.as_ref().map_or("unknown", |s| s.as_str()),
+            pr.state.as_ref().map(|s| format!("{:?}", s)).unwrap_or_else(|| "unknown".to_string()),
             pr.draft.unwrap_or(false),
             pr.html_url.as_ref().map_or("", |url| url.as_str())
         );

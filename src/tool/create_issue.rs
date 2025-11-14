@@ -4,7 +4,6 @@ use anyhow;
 use kodegen_mcp_schema::github::{CreateIssueArgs, CreateIssuePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for creating GitHub issues
 #[derive(Clone)]
@@ -55,8 +54,8 @@ impl Tool for CreateIssueTool {
         // The .await returns Result<Result<Issue, GitHubError>, RecvError>
         let task_result = client
             .create_issue(
-                args.owner,
-                args.repo,
+                args.owner.clone(),
+                args.repo.clone(),
                 args.title,
                 args.body,
                 args.assignees,
@@ -80,7 +79,7 @@ impl Tool for CreateIssueTool {
             "✓ Created issue #{}\n\n\
              Repository: {}/{}\n\
              Title: {}\n\
-             State: {}\n\
+             State: {:?}\n\
              Number: #{}\n\n\
              View on GitHub: {}",
             issue.number,

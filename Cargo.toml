@@ -70,7 +70,7 @@ gix-tempfile = "19"
 gix-utils = "0.3"
 
 [dev-dependencies]
-kodegen_mcp_client = { version = "0.1"  }
+kodegen_mcp_client = { version = "0.2"  }
 tempfile    = "3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

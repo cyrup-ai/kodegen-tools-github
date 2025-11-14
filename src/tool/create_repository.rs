@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreateRepositoryArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -79,7 +78,7 @@ impl Tool for CreateRepositoryTool {
             initialized,
             description_text,
             repository.clone_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
-            repository.ssh_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
+            repository.ssh_url.as_deref().unwrap_or("N/A"),
             repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
         );
 

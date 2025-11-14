@@ -3,7 +3,7 @@ use futures::StreamExt;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::GetPullRequestFilesArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::GitHubClient;
 
@@ -48,6 +48,10 @@ impl Tool for GetPullRequestFilesTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
+        // Clone values before moving them
+        let owner = args.owner.clone();
+        let repo = args.repo.clone();
+
         let mut file_stream = client.get_pull_request_files(args.owner, args.repo, args.pr_number);
 
         let mut files = Vec::new();
@@ -66,7 +70,7 @@ impl Tool for GetPullRequestFilesTool {
             .take(preview_count)
             .map(|f| {
                 format!(
-                    "  {} (+{} -{}) {}",
+                    "  {:?} (+{} -{}) {}",
                     f.status,
                     f.additions,
                     f.deletions,
@@ -76,8 +80,8 @@ impl Tool for GetPullRequestFilesTool {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let total_additions: usize = files.iter().map(|f| f.additions).sum();
-        let total_deletions: usize = files.iter().map(|f| f.deletions).sum();
+        let total_additions: usize = files.iter().map(|f| f.additions as usize).sum();
+        let total_deletions: usize = files.iter().map(|f| f.deletions as usize).sum();
 
         let summary = format!(
             "📁 Retrieved {} changed files from PR #{}\n\n\
@@ -86,8 +90,8 @@ impl Tool for GetPullRequestFilesTool {
              Files:\n{}\n{}",
             files.len(),
             args.pr_number,
-            args.owner,
-            args.repo,
+            owner,
+            repo,
             total_additions,
             total_deletions,
             file_previews,

@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::GetCommitArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -64,35 +63,26 @@ impl Tool for GetCommitTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let commit_message = commit.get("commit")
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.as_str())
-            .unwrap_or("No message");
+        let commit_message = commit.commit.message.as_str();
         
-        let author_name = commit.get("commit")
-            .and_then(|c| c.get("author"))
-            .and_then(|a| a.get("name"))
-            .and_then(|n| n.as_str())
+        let author_name = commit.commit.author.as_ref()
+            .map(|a| a.name.as_str())
             .unwrap_or("Unknown");
         
-        let author_date = commit.get("commit")
-            .and_then(|c| c.get("author"))
-            .and_then(|a| a.get("date"))
-            .and_then(|d| d.as_str())
-            .unwrap_or("Unknown");
+        let author_date = commit.commit.author.as_ref()
+            .and_then(|a| a.date.as_ref())
+            .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
         
-        let additions = commit.get("stats")
-            .and_then(|s| s.get("additions"))
-            .and_then(|a| a.as_u64())
+        let additions = commit.stats.as_ref()
+            .and_then(|s| s.additions)
             .unwrap_or(0);
         
-        let deletions = commit.get("stats")
-            .and_then(|s| s.get("deletions"))
-            .and_then(|d| d.as_u64())
+        let deletions = commit.stats.as_ref()
+            .and_then(|s| s.deletions)
             .unwrap_or(0);
         
-        let files_count = commit.get("files")
-            .and_then(|f| f.as_array())
+        let files_count = commit.files.as_ref()
             .map(|f| f.len())
             .unwrap_or(0);
 

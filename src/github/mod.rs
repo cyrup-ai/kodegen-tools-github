@@ -22,6 +22,7 @@ pub use create_release::{
     CreateReleaseOptions, ReleaseResult, create_release, delete_release, get_release_by_tag,
     update_release,
 };
+pub use get_pull_request_status::PullRequestStatus;
 pub use list_commits::ListCommitsOptions;
 pub use list_issues::ListIssuesRequest;
 pub use merge_pull_request::MergePullRequestOptions;

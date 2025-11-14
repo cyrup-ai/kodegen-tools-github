@@ -4,7 +4,6 @@ use anyhow;
 use kodegen_mcp_schema::github::{AddIssueCommentArgs, AddIssueCommentPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for adding comments to GitHub issues
 #[derive(Clone)]
@@ -54,7 +53,7 @@ impl Tool for AddIssueCommentTool {
         // Call API wrapper (returns AsyncTask<Result<Comment, GitHubError>>)
         // The .await returns Result<Result<Comment, GitHubError>, RecvError>
         let task_result = client
-            .add_issue_comment(args.owner, args.repo, args.issue_number, args.body)
+            .add_issue_comment(args.owner.clone(), args.repo.clone(), args.issue_number, args.body)
             .await;
 
         // Handle outer Result (channel error)
@@ -80,9 +79,9 @@ impl Tool for AddIssueCommentTool {
             args.owner,
             args.repo,
             args.issue_number,
-            comment.user.as_ref().map_or("unknown", |u| u.login.as_str()),
+            comment.user.login.as_str(),
             comment.id,
-            comment.html_url.as_ref().map_or("", |url| url.as_str())
+            comment.html_url.as_str()
         );
         contents.push(Content::text(summary));
 

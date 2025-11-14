@@ -5,7 +5,7 @@ use futures::StreamExt;
 use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Tool for searching GitHub issues using GitHub's search syntax
 #[derive(Clone)]
@@ -57,6 +57,9 @@ impl Tool for SearchIssuesTool {
         // Convert per_page to u8 (GitHub API expects u8)
         let per_page = args.per_page.map(|p| p.min(100) as u8);
 
+        // Clone query before moving it
+        let query = args.query.clone();
+
         // Call API wrapper
         let mut issue_stream =
             client.search_issues(args.query, args.sort, args.order, args.page, per_page);
@@ -78,13 +81,18 @@ impl Tool for SearchIssuesTool {
             .take(preview_count)
             .map(|i| {
                 let labels = i.labels.iter()
-                    .map(|l| &l.name)
+                    .map(|l| l.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
+                let state_str = match i.state {
+                    octocrab::models::IssueState::Open => "open",
+                    octocrab::models::IssueState::Closed => "closed",
+                    _ => "unknown",
+                };
                 format!(
                     "  #{} [{}] {} {}",
                     i.number,
-                    i.state,
+                    state_str,
                     i.title,
                     if labels.is_empty() { String::new() } else { format!("({labels})") }
                 )
@@ -98,7 +106,7 @@ impl Tool for SearchIssuesTool {
              Total: {} issues\n\n\
              Top results:\n{}\n{}",
             issues.len(),
-            args.query,
+            query,
             issues.len(),
             issue_previews,
             if issues.len() > preview_count {

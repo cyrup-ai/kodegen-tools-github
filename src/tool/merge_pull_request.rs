@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_schema::github::MergePullRequestArgs;
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -51,11 +50,11 @@ impl Tool for MergePullRequestTool {
             commit_title: args.commit_title,
             commit_message: args.commit_message,
             sha: args.sha,
-            merge_method: args.merge_method,
+            merge_method: args.merge_method.clone(),
         };
 
         let task_result = client
-            .merge_pull_request(args.owner, args.repo, args.pr_number, options)
+            .merge_pull_request(args.owner.clone(), args.repo.clone(), args.pr_number, options)
             .await;
 
         let api_result =
@@ -68,6 +67,13 @@ impl Tool for MergePullRequestTool {
         let mut contents = Vec::new();
 
         // Content[0]: Human-Readable Summary
+        let sha = merge_result.get("sha")
+            .and_then(|s| s.as_str())
+            .unwrap_or("(unknown)");
+        let merged = merge_result.get("merged")
+            .and_then(|m| m.as_bool())
+            .unwrap_or(false);
+        
         let summary = format!(
             "✓ Merged pull request #{}\n\n\
              Repository: {}/{}\n\
@@ -78,8 +84,8 @@ impl Tool for MergePullRequestTool {
             args.owner,
             args.repo,
             args.merge_method.as_ref().map_or("merge", |m| m.as_str()),
-            merge_result.sha.as_ref().map_or("(unknown)", |s| s.as_str()),
-            merge_result.merged
+            sha,
+            merged
         );
         contents.push(Content::text(summary));
 

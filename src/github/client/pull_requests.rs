@@ -19,7 +19,7 @@ impl GitHubClient {
         owner: impl Into<String>,
         repo: impl Into<String>,
         pr_number: u64,
-    ) -> crate::runtime::AsyncTask<Result<octocrab::models::CombinedStatus, GitHubError>> {
+    ) -> crate::runtime::AsyncTask<Result<crate::github::PullRequestStatus, GitHubError>> {
         crate::github::get_pull_request_status::get_pull_request_status(
             self.inner.clone(),
             owner,

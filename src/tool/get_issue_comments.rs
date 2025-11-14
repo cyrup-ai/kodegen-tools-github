@@ -5,7 +5,7 @@ use futures::StreamExt;
 use kodegen_mcp_schema::github::{GetIssueCommentsArgs, GetIssueCommentsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Tool for fetching all comments on a GitHub issue
 #[derive(Clone)]
@@ -55,7 +55,7 @@ impl Tool for GetIssueCommentsTool {
 
         // Call API wrapper (returns AsyncStream)
         let mut comment_stream =
-            client.get_issue_comments(args.owner, args.repo, args.issue_number);
+            client.get_issue_comments(args.owner.clone(), args.repo.clone(), args.issue_number);
 
         // Collect stream results
         let mut comments = Vec::new();
@@ -73,7 +73,7 @@ impl Tool for GetIssueCommentsTool {
         let comment_previews = comments.iter()
             .take(preview_count)
             .map(|c| {
-                let author = c.user.as_ref().map_or("unknown", |u| u.login.as_str());
+                let author = c.user.login.as_str();
                 let body_preview = if c.body.as_ref().map_or(0, |b| b.len()) > 80 {
                     format!("{}...", c.body.as_ref().map_or("", |b| &b[..80]))
                 } else {

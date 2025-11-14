@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_schema::github::SearchUsersArgs;
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -88,25 +87,22 @@ impl Tool for SearchUsersTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Serialize to JSON for processing
-        let page_json = serde_json::to_value(&page)?;
-
         // Build human-readable summary
-        let total_count = page_json.get("total_count").and_then(|t| t.as_u64()).unwrap_or(0);
-        let incomplete = page_json.get("incomplete_results").and_then(|i| i.as_bool()).unwrap_or(false);
-        let items = page_json.get("items").and_then(|i| i.as_array()).unwrap_or(&vec![]);
+        let total_count = page.total_count.unwrap_or(0);
+        let incomplete = page.incomplete_results.unwrap_or(false);
+        let items = &page.items;
 
         let result_preview = items
             .iter()
             .take(5)
-            .filter_map(|item| {
-                let login = item.get("login")?.as_str()?;
-                let user_type = item.get("type")?.as_str()?;
-                let html_url = item.get("html_url")?.as_str()?;
+            .map(|item| {
+                let login = item.login.as_str();
+                let user_type = item.r#type.as_str();
+                let html_url = item.html_url.as_str();
                 
                 let type_emoji = if user_type == "Organization" { "🏢" } else { "👤" };
                 
-                Some(format!("  {} @{}\n      {}", type_emoji, login, html_url))
+                format!("  {} @{}\n      {}", type_emoji, login, html_url)
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -137,7 +133,7 @@ impl Tool for SearchUsersTool {
         );
 
         // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&page_json)
+        let json_str = serde_json::to_string_pretty(&page)
             .unwrap_or_else(|_| "{}".to_string());
 
         Ok(vec![

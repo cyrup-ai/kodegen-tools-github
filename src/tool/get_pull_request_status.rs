@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_schema::github::GetPullRequestStatusArgs;
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -47,6 +46,10 @@ impl Tool for GetPullRequestStatusTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
+        // Clone values before moving them
+        let owner = args.owner.clone();
+        let repo = args.repo.clone();
+
         let task_result = client
             .get_pull_request_status(args.owner, args.repo, args.pr_number)
             .await;
@@ -61,11 +64,15 @@ impl Tool for GetPullRequestStatusTool {
         let mut contents = Vec::new();
 
         // Content[0]: Human-Readable Summary
-        let mergeable_str = if status.mergeable.unwrap_or(false) {
+        let mergeable_str = if status.pr.mergeable.unwrap_or(false) {
             "✓ Yes"
         } else {
             "✗ No"
         };
+        
+        let state_str = status.pr.state.as_ref()
+            .map(|s| format!("{:?}", s))
+            .unwrap_or_else(|| "unknown".to_string());
         
         let summary = format!(
             "🔄 Pull Request #{} Status\n\n\
@@ -75,14 +82,16 @@ impl Tool for GetPullRequestStatusTool {
              Mergeable: {}\n\
              Merge Status: {}\n\n\
              Ready to merge: {}",
-            status.number,
-            args.owner,
-            args.repo,
-            status.title.as_ref().map_or("(no title)", |t| t.as_str()),
-            status.state.as_ref().map_or("unknown", |s| s.as_str()),
+            status.pr.number,
+            owner,
+            repo,
+            status.pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
+            state_str,
             mergeable_str,
-            status.mergeable_state.as_ref().map_or("unknown", |s| s.as_str()),
-            if status.mergeable.unwrap_or(false) { "Yes" } else { "No" }
+            status.pr.mergeable_state.as_ref()
+                .map(|s| format!("{:?}", s))
+                .unwrap_or_else(|| "unknown".to_string()).as_str(),
+            if status.pr.mergeable.unwrap_or(false) { "Yes" } else { "No" }
         );
         contents.push(Content::text(summary));
 

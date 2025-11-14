@@ -4,7 +4,6 @@ use anyhow;
 use kodegen_mcp_schema::github::{GetIssueArgs, GetIssuePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for fetching a GitHub issue by number
 #[derive(Clone)]
@@ -52,6 +51,10 @@ impl Tool for GetIssueTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
+        // Clone values before moving them
+        let owner = args.owner.clone();
+        let repo = args.repo.clone();
+
         // Call API wrapper (returns AsyncTask<Result<Issue, GitHubError>>)
         // The .await returns Result<Result<Issue, GitHubError>, RecvError>
         let task_result = client
@@ -71,7 +74,7 @@ impl Tool for GetIssueTool {
 
         // Content[0]: Human-Readable Summary
         let labels_str = issue.labels.iter()
-            .map(|l| &l.name)
+            .map(|l| l.name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         
@@ -80,10 +83,16 @@ impl Tool for GetIssueTool {
             .collect::<Vec<_>>()
             .join(", ");
         
-        let state_emoji = match issue.state.as_str() {
-            "open" => "🟢",
-            "closed" => "🔴",
+        let state_emoji = match issue.state {
+            octocrab::models::IssueState::Open => "🟢",
+            octocrab::models::IssueState::Closed => "🔴",
             _ => "⚪",
+        };
+        
+        let state_str = match issue.state {
+            octocrab::models::IssueState::Open => "open",
+            octocrab::models::IssueState::Closed => "closed",
+            _ => "unknown",
         };
 
         let summary = format!(
@@ -98,10 +107,10 @@ impl Tool for GetIssueTool {
              View on GitHub: {}",
             issue.number,
             issue.title,
-            args.owner,
-            args.repo,
+            owner,
+            repo,
             state_emoji,
-            issue.state,
+            state_str,
             issue.user.login,
             issue.created_at.format("%Y-%m-%d"),
             issue.comments,

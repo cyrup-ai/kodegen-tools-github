@@ -3,7 +3,6 @@ use kodegen_mcp_schema::github::{CreatePullRequestReviewArgs, CreatePullRequestR
 use kodegen_mcp_tool::{Tool, error::McpError};
 use octocrab::models::pulls::ReviewAction;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for creating a review on a pull request
 #[derive(Clone)]

@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::ListCommitsArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -67,7 +66,6 @@ impl Tool for ListCommitsTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let commits_array = commits.as_array().unwrap_or(&vec![]);
         
         let filters_applied = vec![
             args.sha.as_ref().map(|s| format!("branch/sha: {}", s)),
@@ -87,13 +85,15 @@ impl Tool for ListCommitsTool {
             String::new()
         };
 
-        let commit_preview = commits_array
+        let commit_preview = commits
             .iter()
             .take(5)
-            .filter_map(|commit| {
-                let sha = commit.get("sha")?.as_str()?;
-                let message = commit.get("commit")?.get("message")?.as_str()?;
-                let author = commit.get("commit")?.get("author")?.get("name")?.as_str()?;
+            .map(|commit| {
+                let sha = commit.sha.as_str();
+                let message = commit.commit.message.as_str();
+                let author = commit.commit.author.as_ref()
+                    .map(|a| a.name.as_str())
+                    .unwrap_or("Unknown");
                 
                 let message_first_line = message.lines().next().unwrap_or(message);
                 let message_preview = if message_first_line.len() > 60 {
@@ -102,13 +102,13 @@ impl Tool for ListCommitsTool {
                     message_first_line.to_string()
                 };
                 
-                Some(format!("  📝 {} - {} (@{})", &sha[..7], message_preview, author))
+                format!("  📝 {} - {} (@{})", &sha[..7], message_preview, author)
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        let more_indicator = if commits_array.len() > 5 {
-            format!("\n  ... and {} more commits", commits_array.len() - 5)
+        let more_indicator = if commits.len() > 5 {
+            format!("\n  ... and {} more commits", commits.len() - 5)
         } else {
             String::new()
         };
@@ -117,7 +117,7 @@ impl Tool for ListCommitsTool {
             "📜 Retrieved {} commit(s)\n\n\
              Repository: {}/{}{}\n\n\
              Recent commits:\n{}{}",
-            commits_array.len(),
+            commits.len(),
             args.owner,
             args.repo,
             filters_text,

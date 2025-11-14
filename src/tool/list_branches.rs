@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::ListBranchesArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -58,29 +57,26 @@ impl Tool for ListBranchesTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let branches_array = branches.as_array().unwrap_or(&vec![]);
-        
-        let branch_preview = branches_array
+        let branch_preview = branches
             .iter()
             .take(10)
-            .filter_map(|branch| {
-                let name = branch.get("name")?.as_str()?;
-                let protected = branch.get("protected")?.as_bool().unwrap_or(false);
+            .map(|branch| {
+                let protected = branch.protected;
                 let protection_emoji = if protected { "🔒" } else { "🌿" };
-                Some(format!("  {} {}", protection_emoji, name))
+                format!("  {} {}", protection_emoji, branch.name)
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        let more_indicator = if branches_array.len() > 10 {
-            format!("\n  ... and {} more branches", branches_array.len() - 10)
+        let more_indicator = if branches.len() > 10 {
+            format!("\n  ... and {} more branches", branches.len() - 10)
         } else {
             String::new()
         };
 
-        let protected_count = branches_array
+        let protected_count = branches
             .iter()
-            .filter(|b| b.get("protected").and_then(|p| p.as_bool()).unwrap_or(false))
+            .filter(|b| b.protected)
             .count();
 
         let summary = format!(
@@ -88,7 +84,7 @@ impl Tool for ListBranchesTool {
              Repository: {}/{}\n\
              Protected branches: {}\n\n\
              Branches:\n{}{}",
-            branches_array.len(),
+            branches.len(),
             args.owner,
             args.repo,
             protected_count,

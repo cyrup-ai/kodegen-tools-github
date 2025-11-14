@@ -2,7 +2,7 @@ use anyhow;
 use kodegen_mcp_schema::github::{RequestCopilotReviewArgs, RequestCopilotReviewPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Tool for requesting GitHub Copilot to review a pull request
 #[derive(Clone)]

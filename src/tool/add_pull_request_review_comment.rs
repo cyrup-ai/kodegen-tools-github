@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for adding inline review comments to a pull request
 #[derive(Clone)]

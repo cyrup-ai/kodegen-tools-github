@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::CreateBranchArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -58,9 +57,7 @@ impl Tool for CreateBranchTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let ref_name = reference.get("ref")
-            .and_then(|r| r.as_str())
-            .unwrap_or("N/A");
+        let ref_name = reference.ref_field.as_str();
         
         let summary = format!(
             "🌿 Created branch: {}\n\n\

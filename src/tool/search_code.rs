@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::SearchCodeArgs;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -65,18 +64,19 @@ impl Tool for SearchCodeTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let total_count = page.get("total_count").and_then(|t| t.as_u64()).unwrap_or(0);
-        let incomplete = page.get("incomplete_results").and_then(|i| i.as_bool()).unwrap_or(false);
-        let items = page.get("items").and_then(|i| i.as_array()).unwrap_or(&vec![]);
+        let total_count = page.total_count.unwrap_or(0);
+        let incomplete = page.incomplete_results.unwrap_or(false);
+        let items = &page.items;
 
         let result_preview = items
             .iter()
             .take(5)
-            .filter_map(|item| {
-                let name = item.get("name")?.as_str()?;
-                let path = item.get("path")?.as_str()?;
-                let repo_name = item.get("repository")?.get("full_name")?.as_str()?;
-                Some(format!("  📄 {} ({})\n      in {}", name, path, repo_name))
+            .map(|item| {
+                let name = item.name.as_str();
+                let path = item.path.as_str();
+                let repo_name = item.repository.full_name.as_deref()
+                    .unwrap_or("unknown");
+                format!("  📄 {} ({})\n      in {}", name, path, repo_name)
             })
             .collect::<Vec<_>>()
             .join("\n");

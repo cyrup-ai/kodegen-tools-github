@@ -2,7 +2,6 @@ use anyhow;
 use kodegen_mcp_schema::github::UpdatePullRequestArgs;
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::GitHubClient;
 
@@ -99,8 +98,10 @@ impl Tool for UpdatePullRequestTool {
             changes.join(", ")
         };
 
-        let state_str = pr.state.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
-        let state_emoji = if state_str == "open" { "🟢" } else { "⚫" };
+        let state_str = pr.state.as_ref()
+            .map(|s| format!("{:?}", s))
+            .unwrap_or_else(|| "unknown".to_string());
+        let state_emoji = if state_str == "Open" { "🟢" } else { "⚫" };
 
         let summary = format!(
             "✏️ Updated PR #{}: {}\n\n\

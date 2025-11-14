@@ -3,7 +3,6 @@ use kodegen_mcp_tool::{McpError, Tool};
 use kodegen_mcp_schema::github::SearchRepositoriesArgs;
 use octocrab::Octocrab;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 /// Tool for searching GitHub repositories
 pub struct SearchRepositoriesTool;
@@ -70,24 +69,21 @@ impl Tool for SearchRepositoriesTool {
             .await
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Serialize to JSON for processing
-        let page_json = serde_json::to_value(&page)?;
-
         // Build human-readable summary
-        let total_count = page_json.get("total_count").and_then(|t| t.as_u64()).unwrap_or(0);
-        let incomplete = page_json.get("incomplete_results").and_then(|i| i.as_bool()).unwrap_or(false);
-        let items = page_json.get("items").and_then(|i| i.as_array()).unwrap_or(&vec![]);
+        let total_count = page.total_count.unwrap_or(0);
+        let incomplete = page.incomplete_results.unwrap_or(false);
+        let items = &page.items;
 
         let result_preview = items
             .iter()
             .take(5)
-            .filter_map(|item| {
-                let full_name = item.get("full_name")?.as_str()?;
-                let description = item.get("description")
-                    .and_then(|d| d.as_str())
+            .map(|item| {
+                let full_name = item.full_name.as_deref()
+                    .unwrap_or("unknown");
+                let description = item.description.as_deref()
                     .unwrap_or("No description");
-                let stars = item.get("stargazers_count")?.as_u64()?;
-                let language = item.get("language")
+                let stars = item.stargazers_count.unwrap_or(0);
+                let language = item.language.as_ref()
                     .and_then(|l| l.as_str())
                     .unwrap_or("Unknown");
                 
@@ -97,7 +93,7 @@ impl Tool for SearchRepositoriesTool {
                     description.to_string()
                 };
                 
-                Some(format!("  ⭐ {} stars - {} [{}]\n      {}", stars, full_name, language, desc_preview))
+                format!("  ⭐ {} stars - {} [{}]\n      {}", stars, full_name, language, desc_preview)
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -128,7 +124,7 @@ impl Tool for SearchRepositoriesTool {
         );
 
         // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&page_json)
+        let json_str = serde_json::to_string_pretty(&page)
             .unwrap_or_else(|_| "{}".to_string());
 
         Ok(vec![

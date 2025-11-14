@@ -5,7 +5,7 @@ use futures::StreamExt;
 use kodegen_mcp_schema::github::{ListIssuesArgs, ListIssuesPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::github::ListIssuesRequest;
 
@@ -70,6 +70,10 @@ impl Tool for ListIssuesTool {
         // Convert per_page to u8 (GitHub API expects u8)
         let per_page = args.per_page.map(|p| p.min(100) as u8);
 
+        // Clone values before moving them
+        let owner = args.owner.clone();
+        let repo = args.repo.clone();
+
         // Build request
         let request = ListIssuesRequest {
             owner: args.owner,
@@ -106,13 +110,18 @@ impl Tool for ListIssuesTool {
             .take(preview_count)
             .map(|i| {
                 let labels = i.labels.iter()
-                    .map(|l| &l.name)
+                    .map(|l| l.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
+                let state_str = match i.state {
+                    octocrab::models::IssueState::Open => "open",
+                    octocrab::models::IssueState::Closed => "closed",
+                    _ => "unknown",
+                };
                 format!(
                     "  #{} [{}] {} {} - @{}",
                     i.number,
-                    i.state,
+                    state_str,
                     i.title,
                     if labels.is_empty() { String::new() } else { format!("({labels})") },
                     i.user.login
@@ -128,8 +137,8 @@ impl Tool for ListIssuesTool {
              Recent issues:\n{}\n{}\n\n\
              Use github_get_issue to view details",
             issues.len(),
-            args.owner,
-            args.repo,
+            owner,
+            repo,
             state_str,
             issues.len(),
             issue_previews,

@@ -1,8 +1,9 @@
 use anyhow;
 use kodegen_mcp_schema::github::{GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
+use octocrab::models::pulls::ReviewState;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::{Value, json};
+use serde_json::json;
 use tokio_stream::StreamExt;
 
 /// Tool for getting all reviews for a pull request
@@ -63,26 +64,38 @@ impl Tool for GetPullRequestReviewsTool {
         }
 
         // Count reviews by state
-        let approved = reviews.iter().filter(|r| r.state.as_deref() == Some("APPROVED")).count();
-        let changes_requested = reviews.iter().filter(|r| r.state.as_deref() == Some("CHANGES_REQUESTED")).count();
-        let commented = reviews.iter().filter(|r| r.state.as_deref() == Some("COMMENTED")).count();
+        let approved = reviews.iter()
+            .filter(|r| r.state == Some(ReviewState::Approved))
+            .count();
+        let changes_requested = reviews.iter()
+            .filter(|r| r.state == Some(ReviewState::ChangesRequested))
+            .count();
+        let commented = reviews.iter()
+            .filter(|r| r.state == Some(ReviewState::Commented))
+            .count();
 
         // Build human-readable summary
         let review_preview = reviews
             .iter()
             .take(5)
             .map(|r| {
-                let state = r.state.as_deref().unwrap_or("UNKNOWN");
-                let emoji = match state {
-                    "APPROVED" => "✅",
-                    "CHANGES_REQUESTED" => "🔴",
-                    "COMMENTED" => "💬",
-                    "DISMISSED" => "🚫",
-                    "PENDING" => "⏳",
+                let state = r.state.as_ref()
+                    .map(|s| format!("{:?}", s))
+                    .unwrap_or_else(|| "UNKNOWN".to_string());
+                let emoji = match r.state {
+                    Some(ReviewState::Approved) => "✅",
+                    Some(ReviewState::ChangesRequested) => "🔴",
+                    Some(ReviewState::Commented) => "💬",
+                    Some(ReviewState::Dismissed) => "🚫",
+                    Some(ReviewState::Pending) => "⏳",
                     _ => "❓",
                 };
-                let user = r.user.as_ref().map(|u| u.login.as_str()).unwrap_or("unknown");
-                let submitted = r.submitted_at.as_deref().unwrap_or("unknown");
+                let user = r.user.as_ref()
+                    .map(|u| u.login.as_str())
+                    .unwrap_or("unknown");
+                let submitted = r.submitted_at
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
                 format!("  {} {} by @{} at {}", emoji, state, user, submitted)
             })
             .collect::<Vec<_>>()

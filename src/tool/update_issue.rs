@@ -4,7 +4,6 @@ use anyhow;
 use kodegen_mcp_schema::github::{UpdateIssueArgs, UpdateIssuePromptArgs};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::Value;
 
 use crate::github::UpdateIssueRequest;
 
@@ -66,8 +65,8 @@ impl Tool for UpdateIssueTool {
 
         // Build request
         let request = UpdateIssueRequest {
-            owner: args.owner,
-            repo: args.repo,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
             issue_number: args.issue_number,
             title: args.title,
             body: args.body,
@@ -97,7 +96,7 @@ impl Tool for UpdateIssueTool {
             "✓ Updated issue #{}\n\n\
              Repository: {}/{}\n\
              Title: {}\n\
-             State: {}\n\n\
+             State: {:?}\n\n\
              View on GitHub: {}",
             issue.number,
             args.owner,
