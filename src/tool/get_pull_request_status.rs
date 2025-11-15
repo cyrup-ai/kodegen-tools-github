@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::GetPullRequestStatusArgs;
+use kodegen_mcp_schema::github::{GetPullRequestStatusArgs, GITHUB_GET_PULL_REQUEST_STATUS};
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -13,7 +13,7 @@ impl Tool for GetPullRequestStatusTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_get_pull_request_status"
+        GITHUB_GET_PULL_REQUEST_STATUS
     }
 
     fn description() -> &'static str {

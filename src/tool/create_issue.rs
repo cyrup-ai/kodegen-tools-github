@@ -1,7 +1,7 @@
 //! GitHub issue creation tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{CreateIssueArgs, CreateIssuePromptArgs};
+use kodegen_mcp_schema::github::{CreateIssueArgs, CreateIssuePromptArgs, GITHUB_CREATE_ISSUE};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -14,7 +14,7 @@ impl Tool for CreateIssueTool {
     type PromptArgs = CreateIssuePromptArgs;
 
     fn name() -> &'static str {
-        "github_create_issue"
+        GITHUB_CREATE_ISSUE
     }
 
     fn description() -> &'static str {

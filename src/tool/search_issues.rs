@@ -2,7 +2,7 @@
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs};
+use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs, GITHUB_SEARCH_ISSUES};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
@@ -16,7 +16,7 @@ impl Tool for SearchIssuesTool {
     type PromptArgs = SearchIssuesPromptArgs;
 
     fn name() -> &'static str {
-        "github_search_issues"
+        GITHUB_SEARCH_ISSUES
     }
 
     fn description() -> &'static str {

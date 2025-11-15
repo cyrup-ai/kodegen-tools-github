@@ -5,7 +5,7 @@ use kodegen_mcp_client::responses::{
     GitHubBranch, GitHubCodeResult, GitHubCommentsResponse, GitHubCommit, GitHubIssue,
     GitHubIssuesResponse, GitHubRepository, GitHubSearchResults, GitHubUser,
 };
-use kodegen_mcp_client::tools;
+use kodegen_mcp_schema::github::*;
 use serde_json::json;
 use tracing::{error, info};
 
@@ -52,7 +52,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("1. Testing search_repositories");
     match client
         .call_tool_typed::<GitHubSearchResults<GitHubRepository>>(
-            tools::SEARCH_REPOSITORIES,
+            GITHUB_SEARCH_REPOSITORIES,
             json!({
                 "query": "language:rust stars:>1000",
                 "per_page": 5
@@ -77,7 +77,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("2. Testing search_users");
     match client
         .call_tool_typed::<GitHubSearchResults<GitHubUser>>(
-            tools::SEARCH_USERS,
+            GITHUB_SEARCH_USERS,
             json!({
                 "query": "location:tokyo language:rust",
                 "per_page": 5
@@ -98,7 +98,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("3. Testing search_code with star enrichment");
     match client
         .call_tool_typed::<GitHubSearchResults<GitHubCodeResult>>(
-            tools::SEARCH_CODE,
+            GITHUB_SEARCH_CODE,
             json!({
                 "query": "tokio language:rust",
                 "per_page": 5,
@@ -137,7 +137,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("4. Testing list_branches");
     match client
         .call_tool_typed::<Vec<GitHubBranch>>(
-            tools::LIST_BRANCHES,
+            GITHUB_LIST_BRANCHES,
             json!({
                 "owner": "rust-lang",
                 "repo": "rust"
@@ -158,7 +158,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("5. Testing list_commits");
     let commits_result = client
         .call_tool_typed::<Vec<GitHubCommit>>(
-            tools::LIST_COMMITS,
+            GITHUB_LIST_COMMITS,
             json!({
                 "owner": "rust-lang",
                 "repo": "rust",
@@ -179,7 +179,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
                 info!("6. Testing get_commit");
                 match client
                     .call_tool_typed::<GitHubCommit>(
-                        tools::GET_COMMIT,
+                        GITHUB_GET_COMMIT,
                         json!({
                             "owner": "rust-lang",
                             "repo": "rust",
@@ -209,7 +209,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("7. Testing list_issues");
     let issues_result = client
         .call_tool_typed::<GitHubIssuesResponse>(
-            tools::LIST_ISSUES,
+            GITHUB_LIST_ISSUES,
             json!({
                 "owner": "rust-lang",
                 "repo": "rustlings",
@@ -230,7 +230,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
                 info!("8. Testing get_issue");
                 match client
                     .call_tool_typed::<GitHubIssue>(
-                        tools::GET_ISSUE,
+                        GITHUB_GET_ISSUE,
                         json!({
                             "owner": "rust-lang",
                             "repo": "rustlings",
@@ -252,7 +252,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
                 info!("9. Testing get_issue_comments");
                 match client
                     .call_tool_typed::<GitHubCommentsResponse>(
-                        tools::GET_ISSUE_COMMENTS,
+                        GITHUB_GET_ISSUE_COMMENTS,
                         json!({
                             "owner": "rust-lang",
                             "repo": "rustlings",
@@ -278,7 +278,7 @@ async fn run_github_example(client: &common::LoggingClient) -> anyhow::Result<()
     info!("10. Testing search_issues");
     match client
         .call_tool_typed::<GitHubIssuesResponse>(
-            tools::SEARCH_ISSUES,
+            GITHUB_SEARCH_ISSUES,
             json!({
                 "query": "repo:rust-lang/rustlings is:open is:issue",
                 "per_page": 5

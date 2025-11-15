@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::MergePullRequestArgs;
+use kodegen_mcp_schema::github::{MergePullRequestArgs, GITHUB_MERGE_PULL_REQUEST};
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -13,7 +13,7 @@ impl Tool for MergePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_merge_pull_request"
+        GITHUB_MERGE_PULL_REQUEST
     }
 
     fn description() -> &'static str {

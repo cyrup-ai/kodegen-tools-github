@@ -2,7 +2,7 @@
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{GetIssueCommentsArgs, GetIssueCommentsPromptArgs};
+use kodegen_mcp_schema::github::{GetIssueCommentsArgs, GetIssueCommentsPromptArgs, GITHUB_GET_ISSUE_COMMENTS};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
@@ -16,7 +16,7 @@ impl Tool for GetIssueCommentsTool {
     type PromptArgs = GetIssueCommentsPromptArgs;
 
     fn name() -> &'static str {
-        "github_get_issue_comments"
+        GITHUB_GET_ISSUE_COMMENTS
     }
 
     fn description() -> &'static str {

@@ -1,7 +1,7 @@
 //! GitHub issue retrieval tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{GetIssueArgs, GetIssuePromptArgs};
+use kodegen_mcp_schema::github::{GetIssueArgs, GetIssuePromptArgs, GITHUB_GET_ISSUE};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -14,7 +14,7 @@ impl Tool for GetIssueTool {
     type PromptArgs = GetIssuePromptArgs;
 
     fn name() -> &'static str {
-        "github_get_issue"
+        GITHUB_GET_ISSUE
     }
 
     fn description() -> &'static str {

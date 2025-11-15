@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::GetCommitArgs;
+use kodegen_mcp_schema::github::{GetCommitArgs, GITHUB_GET_COMMIT};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for GetCommitTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_get_commit"
+        GITHUB_GET_COMMIT
     }
 
     fn description() -> &'static str {

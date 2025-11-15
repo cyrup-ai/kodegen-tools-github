@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::CreateRepositoryArgs;
+use kodegen_mcp_schema::github::{CreateRepositoryArgs, GITHUB_CREATE_REPOSITORY};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for CreateRepositoryTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_create_repository"
+        GITHUB_CREATE_REPOSITORY
     }
 
     fn description() -> &'static str {

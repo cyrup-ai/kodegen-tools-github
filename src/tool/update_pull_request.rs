@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::UpdatePullRequestArgs;
+use kodegen_mcp_schema::github::{UpdatePullRequestArgs, GITHUB_UPDATE_PULL_REQUEST};
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -13,7 +13,7 @@ impl Tool for UpdatePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_update_pull_request"
+        GITHUB_UPDATE_PULL_REQUEST
     }
 
     fn description() -> &'static str {

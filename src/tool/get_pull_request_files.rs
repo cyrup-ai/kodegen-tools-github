@@ -1,7 +1,7 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::GetPullRequestFilesArgs;
+use kodegen_mcp_schema::github::{GetPullRequestFilesArgs, GITHUB_GET_PULL_REQUEST_FILES};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
 
@@ -15,7 +15,7 @@ impl Tool for GetPullRequestFilesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_get_pull_request_files"
+        GITHUB_GET_PULL_REQUEST_FILES
     }
 
     fn description() -> &'static str {

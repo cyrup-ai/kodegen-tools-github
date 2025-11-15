@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::SearchCodeArgs;
+use kodegen_mcp_schema::github::{SearchCodeArgs, GITHUB_SEARCH_CODE};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for SearchCodeTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_search_code"
+        GITHUB_SEARCH_CODE
     }
 
     fn description() -> &'static str {

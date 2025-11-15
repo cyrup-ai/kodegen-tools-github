@@ -1,5 +1,5 @@
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::CreateOrUpdateFileArgs;
+use kodegen_mcp_schema::github::{CreateOrUpdateFileArgs, GITHUB_CREATE_OR_UPDATE_FILE};
 use serde_json::Value;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use anyhow;
@@ -15,7 +15,7 @@ impl Tool for CreateOrUpdateFileTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_create_or_update_file"
+        GITHUB_CREATE_OR_UPDATE_FILE
     }
 
     fn description() -> &'static str {

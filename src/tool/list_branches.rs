@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::ListBranchesArgs;
+use kodegen_mcp_schema::github::{ListBranchesArgs, GITHUB_LIST_BRANCHES};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for ListBranchesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_list_branches"
+        GITHUB_LIST_BRANCHES
     }
 
     fn description() -> &'static str {

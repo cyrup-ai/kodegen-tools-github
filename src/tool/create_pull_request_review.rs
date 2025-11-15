@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::{CreatePullRequestReviewArgs, CreatePullRequestReviewPromptArgs};
+use kodegen_mcp_schema::github::{CreatePullRequestReviewArgs, CreatePullRequestReviewPromptArgs, GITHUB_CREATE_PULL_REQUEST_REVIEW};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use octocrab::models::pulls::ReviewAction;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
@@ -13,7 +13,7 @@ impl Tool for CreatePullRequestReviewTool {
     type PromptArgs = CreatePullRequestReviewPromptArgs;
 
     fn name() -> &'static str {
-        "github_create_pull_request_review"
+        GITHUB_CREATE_PULL_REQUEST_REVIEW
     }
 
     fn description() -> &'static str {

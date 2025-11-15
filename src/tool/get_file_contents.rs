@@ -1,5 +1,5 @@
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::GetFileContentsArgs;
+use kodegen_mcp_schema::github::{GetFileContentsArgs, GITHUB_GET_FILE_CONTENTS};
 use serde_json::Value;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use anyhow;
@@ -14,7 +14,7 @@ impl Tool for GetFileContentsTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_get_file_contents"
+        GITHUB_GET_FILE_CONTENTS
     }
 
     fn description() -> &'static str {

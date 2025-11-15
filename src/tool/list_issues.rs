@@ -2,7 +2,7 @@
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{ListIssuesArgs, ListIssuesPromptArgs};
+use kodegen_mcp_schema::github::{ListIssuesArgs, ListIssuesPromptArgs, GITHUB_LIST_ISSUES};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
@@ -18,7 +18,7 @@ impl Tool for ListIssuesTool {
     type PromptArgs = ListIssuesPromptArgs;
 
     fn name() -> &'static str {
-        "github_list_issues"
+        GITHUB_LIST_ISSUES
     }
 
     fn description() -> &'static str {

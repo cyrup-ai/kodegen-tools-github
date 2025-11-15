@@ -1,7 +1,7 @@
 //! GitHub code scanning alerts tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{CodeScanningAlertsArgs, CodeScanningAlertsPromptArgs};
+use kodegen_mcp_schema::github::{CodeScanningAlertsArgs, CodeScanningAlertsPromptArgs, GITHUB_CODE_SCANNING_ALERTS};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
@@ -15,7 +15,7 @@ impl Tool for CodeScanningAlertsTool {
     type PromptArgs = CodeScanningAlertsPromptArgs;
     
     fn name() -> &'static str {
-        "github_code_scanning_alerts"
+        GITHUB_CODE_SCANNING_ALERTS
     }
     
     fn description() -> &'static str {

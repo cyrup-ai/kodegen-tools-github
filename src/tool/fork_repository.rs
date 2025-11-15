@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::ForkRepositoryArgs;
+use kodegen_mcp_schema::github::{ForkRepositoryArgs, GITHUB_FORK_REPOSITORY};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for ForkRepositoryTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_fork_repository"
+        GITHUB_FORK_REPOSITORY
     }
 
     fn description() -> &'static str {

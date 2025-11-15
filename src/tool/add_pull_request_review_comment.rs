@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs};
+use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs, GITHUB_ADD_PULL_REQUEST_REVIEW_COMMENT};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -12,7 +12,7 @@ impl Tool for AddPullRequestReviewCommentTool {
     type PromptArgs = AddPullRequestReviewCommentPromptArgs;
 
     fn name() -> &'static str {
-        "github_add_pull_request_review_comment"
+        GITHUB_ADD_PULL_REQUEST_REVIEW_COMMENT
     }
 
     fn description() -> &'static str {

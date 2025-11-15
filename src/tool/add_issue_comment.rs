@@ -1,7 +1,7 @@
 //! GitHub issue comment addition tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{AddIssueCommentArgs, AddIssueCommentPromptArgs};
+use kodegen_mcp_schema::github::{AddIssueCommentArgs, AddIssueCommentPromptArgs, GITHUB_ADD_ISSUE_COMMENT};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -14,7 +14,7 @@ impl Tool for AddIssueCommentTool {
     type PromptArgs = AddIssueCommentPromptArgs;
 
     fn name() -> &'static str {
-        "github_add_issue_comment"
+        GITHUB_ADD_ISSUE_COMMENT
     }
 
     fn description() -> &'static str {

@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::SearchRepositoriesArgs;
+use kodegen_mcp_schema::github::{SearchRepositoriesArgs, GITHUB_SEARCH_REPOSITORIES};
 use octocrab::Octocrab;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -12,7 +12,7 @@ impl Tool for SearchRepositoriesTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_search_repositories"
+        GITHUB_SEARCH_REPOSITORIES
     }
 
     fn description() -> &'static str {

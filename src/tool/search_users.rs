@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::SearchUsersArgs;
+use kodegen_mcp_schema::github::{SearchUsersArgs, GITHUB_SEARCH_USERS};
 use kodegen_mcp_tool::{McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -13,7 +13,7 @@ impl Tool for SearchUsersTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_search_users"
+        GITHUB_SEARCH_USERS
     }
 
     fn description() -> &'static str {

@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::{RequestCopilotReviewArgs, RequestCopilotReviewPromptArgs};
+use kodegen_mcp_schema::github::{RequestCopilotReviewArgs, RequestCopilotReviewPromptArgs, GITHUB_REQUEST_COPILOT_REVIEW};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
@@ -13,7 +13,7 @@ impl Tool for RequestCopilotReviewTool {
     type PromptArgs = RequestCopilotReviewPromptArgs;
 
     fn name() -> &'static str {
-        "github_request_copilot_review"
+        GITHUB_REQUEST_COPILOT_REVIEW
     }
 
     fn description() -> &'static str {

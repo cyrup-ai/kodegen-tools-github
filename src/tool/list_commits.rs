@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::ListCommitsArgs;
+use kodegen_mcp_schema::github::{ListCommitsArgs, GITHUB_LIST_COMMITS};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for ListCommitsTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_list_commits"
+        GITHUB_LIST_COMMITS
     }
 
     fn description() -> &'static str {

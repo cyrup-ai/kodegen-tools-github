@@ -1,7 +1,7 @@
 //! GitHub authenticated user retrieval tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{GetMeArgs, GetMePromptArgs};
+use kodegen_mcp_schema::github::{GetMeArgs, GetMePromptArgs, GITHUB_GET_ME};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
@@ -15,7 +15,7 @@ impl Tool for GetMeTool {
     type PromptArgs = GetMePromptArgs;
     
     fn name() -> &'static str {
-        "github_get_me"
+        GITHUB_GET_ME
     }
     
     fn description() -> &'static str {

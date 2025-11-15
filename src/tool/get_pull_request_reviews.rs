@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_schema::github::{GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs};
+use kodegen_mcp_schema::github::{GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs, GITHUB_GET_PULL_REQUEST_REVIEWS};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use octocrab::models::pulls::ReviewState;
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
@@ -15,7 +15,7 @@ impl Tool for GetPullRequestReviewsTool {
     type PromptArgs = GetPullRequestReviewsPromptArgs;
 
     fn name() -> &'static str {
-        "github_get_pull_request_reviews"
+        GITHUB_GET_PULL_REQUEST_REVIEWS
     }
 
     fn description() -> &'static str {

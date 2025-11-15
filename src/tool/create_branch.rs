@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::CreateBranchArgs;
+use kodegen_mcp_schema::github::{CreateBranchArgs, GITHUB_CREATE_BRANCH};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -13,7 +13,7 @@ impl Tool for CreateBranchTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_create_branch"
+        GITHUB_CREATE_BRANCH
     }
 
     fn description() -> &'static str {

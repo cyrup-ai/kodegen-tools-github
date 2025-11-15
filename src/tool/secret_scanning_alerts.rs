@@ -1,7 +1,7 @@
 //! GitHub secret scanning alerts tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{SecretScanningAlertsArgs, SecretScanningAlertsPromptArgs};
+use kodegen_mcp_schema::github::{SecretScanningAlertsArgs, SecretScanningAlertsPromptArgs, GITHUB_SECRET_SCANNING_ALERTS};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
@@ -15,7 +15,7 @@ impl Tool for SecretScanningAlertsTool {
     type PromptArgs = SecretScanningAlertsPromptArgs;
     
     fn name() -> &'static str {
-        "github_secret_scanning_alerts"
+        GITHUB_SECRET_SCANNING_ALERTS
     }
     
     fn description() -> &'static str {

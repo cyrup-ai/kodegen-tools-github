@@ -1,7 +1,7 @@
 //! GitHub multiple files push tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{PushFilesArgs, PushFilesPromptArgs};
+use kodegen_mcp_schema::github::{PushFilesArgs, PushFilesPromptArgs, GITHUB_PUSH_FILES};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
@@ -15,7 +15,7 @@ impl Tool for PushFilesTool {
     type PromptArgs = PushFilesPromptArgs;
     
     fn name() -> &'static str {
-        "github_push_files"
+        GITHUB_PUSH_FILES
     }
     
     fn description() -> &'static str {

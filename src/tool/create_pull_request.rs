@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool};
-use kodegen_mcp_schema::github::CreatePullRequestArgs;
+use kodegen_mcp_schema::github::{CreatePullRequestArgs, GITHUB_CREATE_PULL_REQUEST};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -14,7 +14,7 @@ impl Tool for CreatePullRequestTool {
     type PromptArgs = ();
 
     fn name() -> &'static str {
-        "github_create_pull_request"
+        GITHUB_CREATE_PULL_REQUEST
     }
 
     fn description() -> &'static str {

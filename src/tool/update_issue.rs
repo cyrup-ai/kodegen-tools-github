@@ -1,7 +1,7 @@
 //! GitHub issue update tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{UpdateIssueArgs, UpdateIssuePromptArgs};
+use kodegen_mcp_schema::github::{UpdateIssueArgs, UpdateIssuePromptArgs, GITHUB_UPDATE_ISSUE};
 use kodegen_mcp_tool::{Tool, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -16,7 +16,7 @@ impl Tool for UpdateIssueTool {
     type PromptArgs = UpdateIssuePromptArgs;
 
     fn name() -> &'static str {
-        "github_update_issue"
+        GITHUB_UPDATE_ISSUE
     }
 
     fn description() -> &'static str {
