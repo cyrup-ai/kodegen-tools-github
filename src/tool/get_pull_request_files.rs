@@ -48,10 +48,6 @@ impl Tool for GetPullRequestFilesTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
-        // Clone values before moving them
-        let owner = args.owner.clone();
-        let repo = args.repo.clone();
-
         let mut file_stream = client.get_pull_request_files(args.owner, args.repo, args.pr_number);
 
         let mut files = Vec::new();
@@ -65,41 +61,15 @@ impl Tool for GetPullRequestFilesTool {
         let mut contents = Vec::new();
 
         // Content[0]: Human-Readable Summary
-        let preview_count = files.len().min(10);
-        let file_previews = files.iter()
-            .take(preview_count)
-            .map(|f| {
-                format!(
-                    "  {:?} (+{} -{}) {}",
-                    f.status,
-                    f.additions,
-                    f.deletions,
-                    f.filename
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
         let total_additions: usize = files.iter().map(|f| f.additions as usize).sum();
         let total_deletions: usize = files.iter().map(|f| f.deletions as usize).sum();
 
         let summary = format!(
-            "📁 Retrieved {} changed files from PR #{}\n\n\
-             Repository: {}/{}\n\
-             Total changes: +{} -{}\n\n\
-             Files:\n{}\n{}",
-            files.len(),
+            "\x1b[36m PR Files: #{}\x1b[0m\n  Changed: {} · +{} -{}",
             args.pr_number,
-            owner,
-            repo,
+            files.len(),
             total_additions,
-            total_deletions,
-            file_previews,
-            if files.len() > preview_count {
-                format!("\n  (showing {preview_count} of {})", files.len())
-            } else {
-                String::new()
-            }
+            total_deletions
         );
         contents.push(Content::text(summary));
 

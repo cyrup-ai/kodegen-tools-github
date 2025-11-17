@@ -56,26 +56,16 @@ impl Tool for ForkRepositoryTool {
         let repository =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let destination = args.organization
-            .as_ref()
-            .map(|org| format!("organization @{}", org))
-            .unwrap_or_else(|| "your account".to_string());
+        // Build human-readable summary with ANSI colors and Nerd Font icons
+        let fork_full_name = repository.full_name.as_deref().unwrap_or("N/A");
+        let html_url = repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A");
 
         let summary = format!(
-            "🍴 Forked {}/{} to {}\n\n\
-             New repository: {}\n\n\
-             Clone URLs:\n\
-             • HTTPS: {}\n\
-             • SSH: {}\n\n\
-             View on GitHub: {}",
+            "\x1b[32m Repository Forked: {}/{}\x1b[0m\n  Fork: {} · URL: {}",
             args.owner,
             args.repo,
-            destination,
-            repository.full_name.as_deref().unwrap_or("N/A"),
-            repository.clone_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
-            repository.ssh_url.as_deref().unwrap_or("N/A"),
-            repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+            fork_full_name,
+            html_url
         );
 
         // Serialize full metadata

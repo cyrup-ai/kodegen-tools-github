@@ -63,47 +63,27 @@ impl Tool for SearchCodeTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
+        // Build human-readable summary with ANSI colors and Nerd Font icons
         let total_count = page.total_count.unwrap_or(0);
-        let incomplete = page.incomplete_results.unwrap_or(false);
         let items = &page.items;
 
-        let result_preview = items
-            .iter()
-            .take(5)
-            .map(|item| {
-                let name = item.name.as_str();
-                let path = item.path.as_str();
-                let repo_name = item.repository.full_name.as_deref()
-                    .unwrap_or("unknown");
-                format!("  📄 {} ({})\n      in {}", name, path, repo_name)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let more_indicator = if items.len() > 5 {
-            format!("\n  ... and {} more results", items.len() - 5)
+        // Extract first result info or use "N/A"
+        let first_result = if let Some(first) = items.first() {
+            format!(
+                "{}/{}",
+                first.repository.full_name.as_deref().unwrap_or("N/A"),
+                first.path.as_str()
+            )
         } else {
-            String::new()
-        };
-
-        let incomplete_warning = if incomplete {
-            "\n\n⚠️  Search results may be incomplete (query timed out)"
-        } else {
-            ""
+            "N/A".to_string()
         };
 
         let summary = format!(
-            "🔍 Code search: \"{}\"\n\n\
-             Total matches: {}\n\
-             Results in this page: {}\n\n\
-             Top results:\n{}{}{}",
+            "\x1b[36m Code Search: {}\x1b[0m\n\
+              Results: {} · Top: {}",
             args.query,
             total_count,
-            items.len(),
-            result_preview,
-            more_indicator,
-            incomplete_warning
+            first_result
         );
 
         // Serialize full metadata

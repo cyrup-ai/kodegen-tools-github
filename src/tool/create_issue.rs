@@ -76,19 +76,12 @@ impl Tool for CreateIssueTool {
 
         // Content[0]: Human-Readable Summary
         let summary = format!(
-            "✓ Created issue #{}\n\n\
-             Repository: {}/{}\n\
-             Title: {}\n\
-             State: {:?}\n\
-             Number: #{}\n\n\
-             View on GitHub: {}",
+            "\x1b[32m󰌃 Issue Created: #{}\x1b[0m\n\
+             󰋼 Repo: {}/{} · Title: {}",
             issue.number,
             args.owner,
             args.repo,
-            issue.title,
-            issue.state,
-            issue.number,
-            issue.html_url
+            issue.title
         );
         contents.push(Content::text(summary));
 

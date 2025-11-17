@@ -58,6 +58,21 @@ impl GitHubClient {
         )
     }
 
+    /// Delete a branch
+    pub fn delete_branch(
+        &self,
+        owner: impl Into<String>,
+        repo: impl Into<String>,
+        branch_name: impl Into<String>,
+    ) -> crate::runtime::AsyncTask<Result<(), GitHubError>> {
+        crate::github::delete_branch::delete_branch(
+            self.inner.clone(),
+            owner,
+            repo,
+            branch_name,
+        )
+    }
+
     /// List commits
     pub fn list_commits(
         &self,

@@ -92,18 +92,19 @@ impl Tool for UpdateIssueTool {
         let mut contents = Vec::new();
 
         // Content[0]: Human-Readable Summary
+        let state_str = match issue.state {
+            octocrab::models::IssueState::Open => "open",
+            octocrab::models::IssueState::Closed => "closed",
+            _ => "unknown",
+        };
+
         let summary = format!(
-            "✓ Updated issue #{}\n\n\
-             Repository: {}/{}\n\
-             Title: {}\n\
-             State: {:?}\n\n\
-             View on GitHub: {}",
+            "\x1b[33m Issue Updated: #{}\x1b[0m\n\
+             󰋼 Repo: {}/{} · State: {}",
             issue.number,
             args.owner,
             args.repo,
-            issue.title,
-            issue.state,
-            issue.html_url
+            state_str
         );
         contents.push(Content::text(summary));
 

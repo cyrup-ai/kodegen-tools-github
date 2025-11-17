@@ -1,29 +1,31 @@
-//! GitHub issues listing tool
+//! GitHub pull requests listing tool
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{ListIssuesArgs, ListIssuesPromptArgs, GITHUB_LIST_ISSUES};
-use kodegen_mcp_tool::{Tool, error::McpError};
+use kodegen_mcp_schema::github::{
+    ListPullRequestsArgs, ListPullRequestsPromptArgs, GITHUB_LIST_PULL_REQUESTS,
+};
+use kodegen_mcp_tool::{error::McpError, Tool};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
 
-use crate::github::ListIssuesRequest;
+use crate::github::ListPullRequestsRequest;
 
-/// Tool for listing and filtering GitHub issues
+/// Tool for listing and filtering GitHub pull requests
 #[derive(Clone)]
-pub struct ListIssuesTool;
+pub struct ListPullRequestsTool;
 
-impl Tool for ListIssuesTool {
-    type Args = ListIssuesArgs;
-    type PromptArgs = ListIssuesPromptArgs;
+impl Tool for ListPullRequestsTool {
+    type Args = ListPullRequestsArgs;
+    type PromptArgs = ListPullRequestsPromptArgs;
 
     fn name() -> &'static str {
-        GITHUB_LIST_ISSUES
+        GITHUB_LIST_PULL_REQUESTS
     }
 
     fn description() -> &'static str {
-        "List and filter issues in a GitHub repository. Supports filtering by state, labels, \
-         assignee, and pagination. Returns an array of issue objects. \
+        "List and filter pull requests in a GitHub repository. Supports filtering by state, labels, \
+         and pagination. Returns an array of pull request objects. \
          Requires GITHUB_TOKEN environment variable."
     }
 
@@ -75,37 +77,37 @@ impl Tool for ListIssuesTool {
         let repo = args.repo.clone();
 
         // Build request
-        let request = ListIssuesRequest {
+        let request = ListPullRequestsRequest {
             owner: args.owner,
             repo: args.repo,
             state,
             labels: args.labels,
             sort: None,
             direction: None,
-            since: None,
             page: args.page,
             per_page,
         };
 
         // Call API wrapper
-        let mut issue_stream = client.list_issues(request);
+        let mut pr_stream = client.list_pull_requests(request);
 
         // Collect stream results
-        let mut issues = Vec::new();
-        while let Some(result) = issue_stream.next().await {
-            let issue =
-                result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
-            issues.push(issue);
+        let mut pull_requests = Vec::new();
+        while let Some(result) = pr_stream.next().await {
+            let pr = result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
+            pull_requests.push(pr);
         }
 
-        // Count open and closed issues
-        let open_count = issues.iter()
-            .filter(|i| matches!(i.state, octocrab::models::IssueState::Open))
+        // Count open and closed pull requests
+        let open_count = pull_requests
+            .iter()
+            .filter(|pr| matches!(pr.state, Some(octocrab::models::IssueState::Open)))
             .count();
-        let closed_count = issues.iter()
-            .filter(|i| matches!(i.state, octocrab::models::IssueState::Closed))
+        let closed_count = pull_requests
+            .iter()
+            .filter(|pr| matches!(pr.state, Some(octocrab::models::IssueState::Closed)))
             .count();
-        let total_count = issues.len();
+        let total_count = pull_requests.len();
 
         // Build dual-content response
         let mut contents = Vec::new();
@@ -114,22 +116,18 @@ impl Tool for ListIssuesTool {
         // Line 1: Status Header with ANSI cyan color and Nerd Font icon
         // Line 2: Summary Statistics with info icon
         let summary = format!(
-            "\x1b[36m📋 Issues: {}/{}\x1b[0m\n  ℹ️  Total: {} · Open: {} · Closed: {}",
-            owner,
-            repo,
-            total_count,
-            open_count,
-            closed_count
+            "\x1b[36m 🔀 Pull Requests: {}/{}\x1b[0m\n  ℹ️  Total: {} · Open: {} · Closed: {}",
+            owner, repo, total_count, open_count, closed_count
         );
         contents.push(Content::text(summary));
 
         // Content[1]: Machine-Parseable JSON
         let metadata = json!({
-            "issues": issues,
-            "count": issues.len()
+            "pull_requests": pull_requests,
+            "count": pull_requests.len()
         });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
+        let json_str =
+            serde_json::to_string_pretty(&metadata).unwrap_or_else(|_| "{}".to_string());
         contents.push(Content::text(json_str));
 
         Ok(contents)
@@ -143,24 +141,24 @@ impl Tool for ListIssuesTool {
         Ok(vec![
             PromptMessage {
                 role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I list and filter GitHub issues?"),
+                content: PromptMessageContent::text(
+                    "How do I list and filter GitHub pull requests?",
+                ),
             },
             PromptMessage {
                 role: PromptMessageRole::Assistant,
                 content: PromptMessageContent::text(
-                    "Use the list_issues tool to list and filter repository issues:\n\n\
-                     List all open issues:\n\
-                     list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\"})\n\n\
+                    "Use the list_pull_requests tool to list and filter repository pull requests:\n\n\
+                     List all open pull requests:\n\
+                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\"})\n\n\
                      Filter by state:\n\
-                     list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\n\
+                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\n\
                      Filter by labels (multiple labels = AND logic):\n\
-                     list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\", \"priority-high\"]})\n\n\
-                     Filter by assignee:\n\
-                     list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"assignee\": \"octocat\"})\n\n\
+                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\", \"priority-high\"]})\n\n\
                      With pagination:\n\
-                     list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50, \"page\": 2})\n\n\
+                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50, \"page\": 2})\n\n\
                      Combined filters:\n\
-                     list_issues({\n\
+                     list_pull_requests({\n\
                        \"owner\": \"octocat\",\n\
                        \"repo\": \"hello-world\",\n\
                        \"state\": \"open\",\n\
@@ -169,8 +167,7 @@ impl Tool for ListIssuesTool {
                      })\n\n\
                      Filter options:\n\
                      - state: \"open\" (default), \"closed\", or \"all\"\n\
-                     - labels: Array of label names (matches issues with ALL labels)\n\
-                     - assignee: Username of assigned user\n\
+                     - labels: Array of label names (matches PRs with ALL labels)\n\
                      - per_page: Results per page (max 100, default 30)\n\
                      - page: Page number for pagination\n\n\
                      Requirements:\n\

@@ -69,23 +69,17 @@ impl Tool for MergePullRequestTool {
         // Content[0]: Human-Readable Summary
         let sha = merge_result.get("sha")
             .and_then(|s| s.as_str())
+            .map(|s| if s.len() > 7 { &s[..7] } else { s })
             .unwrap_or("(unknown)");
-        let merged = merge_result.get("merged")
-            .and_then(|m| m.as_bool())
-            .unwrap_or(false);
-        
+
+        let merge_method = args.merge_method.as_ref().map_or("merge", |m| m.as_str());
+
         let summary = format!(
-            "✓ Merged pull request #{}\n\n\
-             Repository: {}/{}\n\
-             Merge method: {}\n\
-             SHA: {}\n\
-             Merged: {}",
+            "\x1b[33m PR Merged: #{}\x1b[0m\n\
+             ✓ Method: {} · SHA: {}",
             args.pr_number,
-            args.owner,
-            args.repo,
-            args.merge_method.as_ref().map_or("merge", |m| m.as_str()),
-            sha,
-            merged
+            merge_method,
+            sha
         );
         contents.push(Content::text(summary));
 

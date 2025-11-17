@@ -136,4 +136,13 @@ impl GitHubClient {
             options,
         )
     }
+
+    /// List pull requests
+    #[must_use]
+    pub fn list_pull_requests(
+        &self,
+        request: crate::github::ListPullRequestsRequest,
+    ) -> crate::runtime::AsyncStream<Result<octocrab::models::pulls::PullRequest, GitHubError>> {
+        crate::github::list_pull_requests::list_pull_requests(self.inner.clone(), request)
+    }
 }

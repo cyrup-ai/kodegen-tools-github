@@ -51,10 +51,6 @@ impl Tool for GetIssueTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
-        // Clone values before moving them
-        let owner = args.owner.clone();
-        let repo = args.repo.clone();
-
         // Call API wrapper (returns AsyncTask<Result<Issue, GitHubError>>)
         // The .await returns Result<Result<Issue, GitHubError>, RecvError>
         let task_result = client
@@ -73,22 +69,6 @@ impl Tool for GetIssueTool {
         let mut contents = Vec::new();
 
         // Content[0]: Human-Readable Summary
-        let labels_str = issue.labels.iter()
-            .map(|l| l.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        
-        let assignees_str = issue.assignees.iter()
-            .map(|a| format!("@{}", a.login))
-            .collect::<Vec<_>>()
-            .join(", ");
-        
-        let state_emoji = match issue.state {
-            octocrab::models::IssueState::Open => "🟢",
-            octocrab::models::IssueState::Closed => "🔴",
-            _ => "⚪",
-        };
-        
         let state_str = match issue.state {
             octocrab::models::IssueState::Open => "open",
             octocrab::models::IssueState::Closed => "closed",
@@ -96,33 +76,21 @@ impl Tool for GetIssueTool {
         };
 
         let summary = format!(
-            "🔍 Issue #{}: {}\n\n\
-             Repository: {}/{}\n\
-             State: {} {}\n\
-             Author: @{}\n\
-             Created: {}\n\
-             Comments: {}\n\n\
-             Labels: {}\n\
-             Assignees: {}\n\n\
-             View on GitHub: {}",
+            "\x1b[36m Issue #{}: {}\x1b[0m\n\
+              Status: {} · Comments: {} · Author: @{}",
             issue.number,
             issue.title,
-            owner,
-            repo,
-            state_emoji,
             state_str,
-            issue.user.login,
-            issue.created_at.format("%Y-%m-%d"),
             issue.comments,
-            if labels_str.is_empty() { "none" } else { &labels_str },
-            if assignees_str.is_empty() { "none" } else { &assignees_str },
-            issue.html_url
+            issue.user.login
         );
         contents.push(Content::text(summary));
 
         // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&issue)
-            .unwrap_or_else(|_| "{}".to_string());
+        let json_str = match serde_json::to_string_pretty(&issue) {
+            Ok(json) => json,
+            Err(e) => return Err(McpError::Other(anyhow::anyhow!("Failed to serialize issue to JSON: {}", e))),
+        };
         contents.push(Content::text(json_str));
 
         Ok(contents)

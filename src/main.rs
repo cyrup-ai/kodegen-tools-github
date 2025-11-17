@@ -27,9 +27,10 @@ async fn main() -> Result<()> {
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, AddIssueCommentTool);
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetIssueCommentsTool);
 
-        // Pull Request tools (9)
+        // Pull Request tools (10)
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreatePullRequestTool);
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, UpdatePullRequestTool);
+        (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListPullRequestsTool);
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, MergePullRequestTool);
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestStatusTool);
         (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestFilesTool);

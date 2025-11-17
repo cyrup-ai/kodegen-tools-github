@@ -16,6 +16,7 @@ pub mod update_issue;
 pub mod create_pull_request;
 pub mod get_pull_request_files;
 pub mod get_pull_request_status;
+pub mod list_pull_requests;
 pub mod merge_pull_request;
 pub mod update_pull_request;
 
@@ -28,8 +29,10 @@ pub mod request_copilot_review;
 // Repository Operations
 pub mod create_branch;
 pub mod create_repository;
+pub mod delete_branch;
 pub mod fork_repository;
 pub mod get_commit;
+pub mod get_file_contents;
 pub mod list_branches;
 pub mod list_commits;
 
@@ -50,6 +53,7 @@ pub use update_issue::UpdateIssueTool;
 pub use create_pull_request::CreatePullRequestTool;
 pub use get_pull_request_files::GetPullRequestFilesTool;
 pub use get_pull_request_status::GetPullRequestStatusTool;
+pub use list_pull_requests::ListPullRequestsTool;
 pub use merge_pull_request::MergePullRequestTool;
 pub use update_pull_request::UpdatePullRequestTool;
 
@@ -60,8 +64,10 @@ pub use request_copilot_review::RequestCopilotReviewTool;
 
 pub use create_branch::CreateBranchTool;
 pub use create_repository::CreateRepositoryTool;
+pub use delete_branch::DeleteBranchTool;
 pub use fork_repository::ForkRepositoryTool;
 pub use get_commit::GetCommitTool;
+pub use get_file_contents::GetFileContentsTool;
 pub use list_branches::ListBranchesTool;
 pub use list_commits::ListCommitsTool;
 

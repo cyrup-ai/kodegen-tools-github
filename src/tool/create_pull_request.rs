@@ -71,22 +71,12 @@ impl Tool for CreatePullRequestTool {
 
         // Content[0]: Human-Readable Summary
         let summary = format!(
-            "✓ Created pull request #{}\n\n\
-             Repository: {}/{}\n\
-             Title: {}\n\
-             Head: {} → Base: {}\n\
-             State: {}\n\
-             Draft: {}\n\n\
-             View on GitHub: {}",
+            "\x1b[32m󰊤 PR Created: #{}\x1b[0m\n\
+             󰓫 Title: {} · {} → {}",
             pr.number,
-            args.owner,
-            args.repo,
             pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
             args.head,
-            args.base,
-            pr.state.as_ref().map(|s| format!("{:?}", s)).unwrap_or_else(|| "unknown".to_string()),
-            pr.draft.unwrap_or(false),
-            pr.html_url.as_ref().map_or("", |url| url.as_str())
+            args.base
         );
         contents.push(Content::text(summary));
 

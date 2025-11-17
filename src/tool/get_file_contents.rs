@@ -60,73 +60,62 @@ impl Tool for GetFileContentsTool {
         let api_result = task_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("Task channel error: {}", e)))?;
 
-        let contents = api_result
+        let content_vec = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
 
-        // Build human-readable summary
+        // Convert to JSON for easier manipulation
+        let contents = serde_json::to_value(&content_vec)
+            .unwrap_or(Value::Array(Vec::new()));
+
+        // Build human-readable summary with ANSI colors and Nerd Font icons
         let ref_info = args.ref_name
-            .as_ref()
-            .map(|r| format!("\nRef: {}", r))
-            .unwrap_or_else(|| "\nRef: default branch".to_string());
+            .as_deref()
+            .unwrap_or("default branch");
 
-        let summary = if contents.is_array() {
-            // Directory listing
-            let items = contents.as_array().unwrap();
-            let item_preview = items
-                .iter()
-                .take(10)
-                .filter_map(|item| {
-                    let name = item.get("name")?.as_str()?;
-                    let type_str = item.get("type")?.as_str()?;
-                    let emoji = if type_str == "dir" { "📁" } else { "📄" };
-                    Some(format!("  {} {}", emoji, name))
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            let more_indicator = if items.len() > 10 {
-                format!("\n  ... and {} more items", items.len() - 10)
-            } else {
-                String::new()
-            };
+        let summary = if contents.is_array() && content_vec.len() > 1 {
+            // Directory listing (multiple items)
+            let total_items = content_vec.len();
 
             format!(
-                "📂 Retrieved directory contents: {}\n\n\
-                 Repository: {}/{}{}\n\
-                 Total items: {}\n\n\
-                 Contents:\n{}{}",
+                "\x1b[36m󰈔 File: {} (directory)\x1b[0m\n\
+                 󰋼 Repo: {}/{} · Ref: {} · Items: {}",
                 args.path,
                 args.owner,
                 args.repo,
                 ref_info,
-                items.len(),
-                item_preview,
-                more_indicator
+                total_items
             )
-        } else {
+        } else if !content_vec.is_empty() {
             // Single file
-            let name = contents.get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let size = contents.get("size")
-                .and_then(|v| v.as_u64())
+            let item = &contents[0];
+            let size = item.get("size")
+                .and_then(Value::as_u64)
                 .unwrap_or(0);
-            let sha = contents.get("sha")
-                .and_then(|v| v.as_str())
+
+            let sha = item.get("sha")
+                .and_then(Value::as_str)
                 .unwrap_or("N/A");
 
+            let sha_short = if sha.len() >= 7 { &sha[..7] } else { sha };
+
             format!(
-                "📄 Retrieved file: {}\n\n\
-                 Repository: {}/{}{}\n\
-                 Size: {} bytes\n\
-                 SHA: {}\n\n\
-                 Note: Content is base64-encoded in JSON response",
-                name,
+                "\x1b[36m󰈔 File: {}\x1b[0m\n\
+                 󰋼 Repo: {}/{} · Ref: {} · Size: {} bytes · SHA: {}",
+                args.path,
                 args.owner,
                 args.repo,
                 ref_info,
                 size,
-                sha
+                sha_short
+            )
+        } else {
+            format!(
+                "\x1b[36m󰈔 File: {} (empty)\x1b[0m\n\
+                 󰋼 Repo: {}/{} · Ref: {}",
+                args.path,
+                args.owner,
+                args.repo,
+                ref_info
             )
         };
 

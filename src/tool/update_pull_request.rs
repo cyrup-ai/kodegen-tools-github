@@ -74,49 +74,18 @@ impl Tool for UpdatePullRequestTool {
         let pr =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let mut changes = Vec::new();
-        if args.title.is_some() {
-            changes.push("title");
-        }
-        if args.body.is_some() {
-            changes.push("description");
-        }
-        if args.state.is_some() {
-            changes.push("state");
-        }
-        if args.base.is_some() {
-            changes.push("base branch");
-        }
-        if args.maintainer_can_modify.is_some() {
-            changes.push("maintainer access");
-        }
-
-        let changes_str = if changes.is_empty() {
-            "no changes".to_string()
-        } else {
-            changes.join(", ")
-        };
-
+        // Format state
         let state_str = pr.state.as_ref()
             .map(|s| format!("{:?}", s))
             .unwrap_or_else(|| "unknown".to_string());
-        let state_emoji = if state_str == "Open" { "🟢" } else { "⚫" };
 
+        // Build 2-line ANSI yellow output with Nerd Font icons
         let summary = format!(
-            "✏️ Updated PR #{}: {}\n\n\
-             Repository: {}/{}\n\
-             State: {} {}\n\
-             Changes: {}\n\n\
-             View on GitHub: {}",
+            "\x1b[33m PR Updated: #{}\x1b[0m\n\
+              State: {} · Title: {}",
             pr.number,
-            pr.title.as_deref().unwrap_or("Untitled"),
-            args.owner,
-            args.repo,
-            state_emoji,
             state_str,
-            changes_str,
-            pr.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+            pr.title.as_deref().unwrap_or("Untitled")
         );
 
         // Serialize full metadata

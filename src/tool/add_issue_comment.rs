@@ -69,25 +69,17 @@ impl Tool for AddIssueCommentTool {
 
         // Content[0]: Human-Readable Summary
         let summary = format!(
-            "💬 Added comment to issue #{}\n\n\
-             Repository: {}/{}\n\
-             Issue: #{}\n\
-             Author: @{}\n\
-             Comment ID: {}\n\n\
-             View comment: {}",
+            "\x1b[32m󰬞 Comment Added: Issue #{}\x1b[0m\n\
+             󰄴 ID: {} · Author: @{}",
             args.issue_number,
-            args.owner,
-            args.repo,
-            args.issue_number,
-            comment.user.login.as_str(),
             comment.id,
-            comment.html_url.as_str()
+            comment.user.login.as_str()
         );
         contents.push(Content::text(summary));
 
         // Content[1]: Machine-Parseable JSON
         let json_str = serde_json::to_string_pretty(&comment)
-            .unwrap_or_else(|_| "{}".to_string());
+            .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to serialize comment: {e}")))?;
         contents.push(Content::text(json_str));
 
         Ok(contents)

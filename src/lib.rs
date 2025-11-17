@@ -66,12 +66,12 @@ pub mod tool;
 #[cfg(feature = "mcp")]
 pub use tool::{
     AddIssueCommentTool, AddPullRequestReviewCommentTool, CreateBranchTool, CreateIssueTool,
-    CreatePullRequestReviewTool, CreatePullRequestTool, CreateRepositoryTool, ForkRepositoryTool,
-    GetCommitTool, GetIssueCommentsTool, GetIssueTool, GetPullRequestFilesTool,
-    GetPullRequestReviewsTool, GetPullRequestStatusTool, ListBranchesTool, ListCommitsTool,
-    ListIssuesTool, MergePullRequestTool, RequestCopilotReviewTool, SearchCodeTool,
-    SearchIssuesTool, SearchRepositoriesTool, SearchUsersTool, UpdateIssueTool,
-    UpdatePullRequestTool,
+    CreatePullRequestReviewTool, CreatePullRequestTool, CreateRepositoryTool, DeleteBranchTool,
+    ForkRepositoryTool, GetCommitTool, GetFileContentsTool, GetIssueCommentsTool, GetIssueTool,
+    GetPullRequestFilesTool, GetPullRequestReviewsTool, GetPullRequestStatusTool, ListBranchesTool,
+    ListCommitsTool, ListIssuesTool, ListPullRequestsTool, MergePullRequestTool,
+    RequestCopilotReviewTool, SearchCodeTool, SearchIssuesTool, SearchRepositoriesTool,
+    SearchUsersTool, UpdateIssueTool, UpdatePullRequestTool,
 };
 
 /// Start the HTTP server programmatically for embedded mode
@@ -121,9 +121,10 @@ pub async fn start_server(
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, AddIssueCommentTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetIssueCommentsTool);
 
-            // Pull Request tools (9)
+            // Pull Request tools (10)
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreatePullRequestTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, UpdatePullRequestTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListPullRequestsTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, MergePullRequestTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestStatusTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetPullRequestFilesTool);
@@ -136,11 +137,13 @@ pub async fn start_server(
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreateRepositoryTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ForkRepositoryTool);
 
-            // Branch/Commit tools (4)
+            // Branch/Commit tools (6)
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListBranchesTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, CreateBranchTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, DeleteBranchTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, ListCommitsTool);
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetCommitTool);
+            (tool_router, prompt_router) = register_tool(tool_router, prompt_router, GetFileContentsTool);
 
             // Search tools (3)
             (tool_router, prompt_router) = register_tool(tool_router, prompt_router, SearchCodeTool);

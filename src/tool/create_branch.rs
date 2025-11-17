@@ -56,20 +56,14 @@ impl Tool for CreateBranchTool {
         let reference =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let ref_name = reference.ref_field.as_str();
-        
+        // Build human-readable summary with ANSI colors and Nerd Font icons
         let summary = format!(
-            "🌿 Created branch: {}\n\n\
-             Repository: {}/{}\n\
-             From commit: {}\n\
-             Full ref: {}\n\n\
-             ✓ Branch is ready for commits",
+            "\x1b[32m Created branch: {}\x1b[0m\n\
+              Repo: {}/{} · From: {}",
             args.branch_name,
             args.owner,
             args.repo,
-            args.sha,
-            ref_name
+            args.sha
         );
 
         // Serialize full metadata

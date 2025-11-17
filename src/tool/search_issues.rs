@@ -75,45 +75,25 @@ impl Tool for SearchIssuesTool {
         // Build dual-content response
         let mut contents = Vec::new();
 
-        // Content[0]: Human-Readable Summary
-        let preview_count = issues.len().min(10);
-        let issue_previews = issues.iter()
-            .take(preview_count)
+        // Content[0]: Human-Readable Summary (2 lines with icons)
+        // Line 1: Cyan with search icon
+        // Line 2: Plain text with issue icon and first issue title
+        let first_issue_title = issues.first()
             .map(|i| {
-                let labels = i.labels.iter()
-                    .map(|l| l.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let state_str = match i.state {
-                    octocrab::models::IssueState::Open => "open",
-                    octocrab::models::IssueState::Closed => "closed",
-                    _ => "unknown",
-                };
-                format!(
-                    "  #{} [{}] {} {}",
-                    i.number,
-                    state_str,
-                    i.title,
-                    if labels.is_empty() { String::new() } else { format!("({labels})") }
-                )
+                let title = &i.title;
+                if title.len() > 50 {
+                    format!("{}...", &title[..47])
+                } else {
+                    title.to_string()
+                }
             })
-            .collect::<Vec<_>>()
-            .join("\n");
+            .unwrap_or_else(|| "None".to_string());
 
         let summary = format!(
-            "🔍 Found {} issues matching query\n\n\
-             Query: {}\n\
-             Total: {} issues\n\n\
-             Top results:\n{}\n{}",
-            issues.len(),
+            "\x1b[36m\u{f002} Issue Search: {}\x1b[0m\n \u{f05a} Results: {} · Top: {}",
             query,
             issues.len(),
-            issue_previews,
-            if issues.len() > preview_count {
-                format!("\n  (showing {preview_count} of {})", issues.len())
-            } else {
-                String::new()
-            }
+            first_issue_title
         );
         contents.push(Content::text(summary));
 
