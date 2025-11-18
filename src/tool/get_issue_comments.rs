@@ -68,43 +68,19 @@ impl Tool for GetIssueCommentsTool {
         // Build dual-content response
         let mut contents = Vec::new();
 
-        // Content[0]: Human-Readable Summary
-        let preview_count = comments.len().min(5);
-        let comment_previews = comments.iter()
-            .take(preview_count)
-            .map(|c| {
-                let author = c.user.login.as_str();
-                let body_preview = if c.body.as_ref().map_or(0, |b| b.len()) > 80 {
-                    format!("{}...", c.body.as_ref().map_or("", |b| &b[..80]))
-                } else {
-                    c.body.clone().unwrap_or_default()
-                };
-                format!(
-                    "  @{}: {}",
-                    author,
-                    body_preview
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Content[0]: Human-Readable Summary (2 lines)
+        // Get the latest comment author
+        let latest_author = comments
+            .last()
+            .map(|c| c.user.login.as_str())
+            .unwrap_or("none");
 
         let summary = format!(
-            "💬 Retrieved {} comments from issue #{}\n\n\
-             Repository: {}/{}\n\
-             Total comments: {}\n\n\
-             Recent comments:\n{}\n{}\n\n\
-             Use github_add_issue_comment to add a comment",
-            comments.len(),
+            "\x1b[36m Comments: Issue #{}\x1b[0m\n\
+              Total: {} · Latest: {}",
             args.issue_number,
-            args.owner,
-            args.repo,
             comments.len(),
-            comment_previews,
-            if comments.len() > preview_count {
-                format!("\n  (showing {preview_count} of {})", comments.len())
-            } else {
-                String::new()
-            }
+            latest_author
         );
         contents.push(Content::text(summary));
 

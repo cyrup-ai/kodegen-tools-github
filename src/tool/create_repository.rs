@@ -56,30 +56,16 @@ impl Tool for CreateRepositoryTool {
         let repository =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let visibility = if args.private.unwrap_or(false) { "🔒 Private" } else { "🌍 Public" };
-        let initialized = if args.auto_init.unwrap_or(false) { "✓ Initialized with README" } else { "Empty (no initial commit)" };
-        
-        let description_text = args.description
-            .as_ref()
-            .map(|d| format!("\nDescription: {}", d))
-            .unwrap_or_default();
+        // Build human-readable summary - MUST be exactly 2 lines
+        let private_status = if args.private.unwrap_or(false) { "yes" } else { "no" };
+        let html_url = repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A");
+        let repo_name = repository.full_name.as_deref().unwrap_or(&args.name);
 
         let summary = format!(
-            "✨ Created repository: {}\n\n\
-             Visibility: {}\n\
-             Status: {}{}\n\n\
-             Clone URLs:\n\
-             • HTTPS: {}\n\
-             • SSH: {}\n\n\
-             View on GitHub: {}",
-            repository.full_name.as_deref().unwrap_or(&args.name),
-            visibility,
-            initialized,
-            description_text,
-            repository.clone_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"),
-            repository.ssh_url.as_deref().unwrap_or("N/A"),
-            repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+            "\x1b[32m󰊢 Repository Created: {}\x1b[0m\n  󰌹 Private: {} · URL: {}",
+            repo_name,
+            private_status,
+            html_url
         );
 
         // Serialize full metadata

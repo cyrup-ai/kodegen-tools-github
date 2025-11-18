@@ -76,7 +76,7 @@ impl Tool for AddPullRequestReviewCommentTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let comment_type = if args.in_reply_to.is_some() {
+        let _comment_type = if args.in_reply_to.is_some() {
             "threaded reply"
         } else if args.start_line.is_some() {
             "multi-line comment"
@@ -84,13 +84,13 @@ impl Tool for AddPullRequestReviewCommentTool {
             "inline comment"
         };
 
-        let body_preview = if args.body.len() > 80 {
+        let _body_preview = if args.body.len() > 80 {
             format!("{}...", &args.body[..80])
         } else {
             args.body.clone()
         };
 
-        let location = if let Some(in_reply_to) = args.in_reply_to {
+        let _location = if let Some(in_reply_to) = args.in_reply_to {
             format!("Reply to comment #{}", in_reply_to)
         } else if let Some(path) = &args.path {
             if let Some(start_line) = args.start_line {
@@ -102,19 +102,28 @@ impl Tool for AddPullRequestReviewCommentTool {
             "Unknown location".to_string()
         };
 
+        // Build location string based on comment type
+        let location_str = if let Some(in_reply_to) = args.in_reply_to {
+            format!("Reply to comment #{}", in_reply_to)
+        } else if let Some(path) = &args.path {
+            if let Some(start_line) = args.start_line {
+                // Multi-line comment: show range
+                format!("{}:Lines {}-{}", path, start_line, args.line.unwrap_or(0))
+            } else {
+                // Single-line comment: show single line
+                format!("{}:Line {}", path, args.line.unwrap_or(0))
+            }
+        } else {
+            // Fallback (shouldn't happen for valid new comments)
+            "N/A".to_string()
+        };
+
+        // Build 2-line summary following established pattern
         let summary = format!(
-            "💬 Added {} to PR #{}\n\n\
-             Repository: {}/{}\n\
-             Location: {}\n\n\
-             Comment:\n{}\n\n\
-             Comment ID: {}",
-            comment_type,
+            "\x1b[32m󰆾 Review Comment Added: PR #{}\x1b[0m\n\
+             󰈙 Location: {}",
             args.pull_number,
-            args.owner,
-            args.repo,
-            location,
-            body_preview,
-            comment.id
+            location_str
         );
 
         // Serialize full metadata

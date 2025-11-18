@@ -85,53 +85,31 @@ impl Tool for CreatePullRequestReviewTool {
         let review =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let emoji = match event_str.as_str() {
-            "APPROVE" => "✅",
-            "REQUEST_CHANGES" => "🔴",
-            "COMMENT" => "💬",
-            _ => "📝",
-        };
-
-        let body_preview = args.body
+        // Calculate comment word count for metadata
+        let comment_count = args.body
             .as_deref()
-            .map(|b| {
-                let preview = if b.len() > 100 {
-                    format!("{}...", &b[..100])
-                } else {
-                    b.to_string()
-                };
-                format!("\n\nComment:\n{}", preview)
-            })
-            .unwrap_or_default();
+            .map(|b| b.split_whitespace().count())
+            .unwrap_or(0);
 
-        let commit_info = args.commit_id
-            .as_ref()
-            .map(|c| format!("\nCommit: {}", c))
-            .unwrap_or_else(|| "\nCommit: latest".to_string());
+        // Build dual-content response
+        let mut contents = Vec::new();
 
+        // Content[0]: Human-Readable Summary (2-line ANSI format)
         let summary = format!(
-            "{} Submitted {} review on PR #{}\n\n\
-             Repository: {}/{}{}{}\n\n\
-             Review ID: {}",
-            emoji,
-            event_str,
+            "\x1b[32m󰄬 Review Submitted: PR #{}\x1b[0m\n\
+             󰈙 Event: {} · Comments: {} words",
             args.pull_number,
-            args.owner,
-            args.repo,
-            commit_info,
-            body_preview,
-            review.id
+            event_str,
+            comment_count
         );
+        contents.push(Content::text(summary));
 
-        // Serialize full metadata
+        // Content[1]: Machine-Parseable JSON (keep existing serialization)
         let json_str = serde_json::to_string_pretty(&review)
             .unwrap_or_else(|_| "{}".to_string());
+        contents.push(Content::text(json_str));
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(contents)
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

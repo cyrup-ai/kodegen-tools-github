@@ -70,59 +70,17 @@ impl Tool for GetPullRequestReviewsTool {
         let changes_requested = reviews.iter()
             .filter(|r| r.state == Some(ReviewState::ChangesRequested))
             .count();
-        let commented = reviews.iter()
+        let _commented = reviews.iter()
             .filter(|r| r.state == Some(ReviewState::Commented))
             .count();
 
-        // Build human-readable summary
-        let review_preview = reviews
-            .iter()
-            .take(5)
-            .map(|r| {
-                let state = r.state.as_ref()
-                    .map(|s| format!("{:?}", s))
-                    .unwrap_or_else(|| "UNKNOWN".to_string());
-                let emoji = match r.state {
-                    Some(ReviewState::Approved) => "✅",
-                    Some(ReviewState::ChangesRequested) => "🔴",
-                    Some(ReviewState::Commented) => "💬",
-                    Some(ReviewState::Dismissed) => "🚫",
-                    Some(ReviewState::Pending) => "⏳",
-                    _ => "❓",
-                };
-                let user = r.user.as_ref()
-                    .map(|u| u.login.as_str())
-                    .unwrap_or("unknown");
-                let submitted = r.submitted_at
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                format!("  {} {} by @{} at {}", emoji, state, user, submitted)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let more_indicator = if reviews.len() > 5 {
-            format!("\n  ... and {} more reviews", reviews.len() - 5)
-        } else {
-            String::new()
-        };
-
+        // Build human-readable summary (2-line standard format)
         let summary = format!(
-            "📝 Retrieved {} review(s) for PR #{}\n\n\
-             Repository: {}/{}\n\
-             Approvals: ✅ {}\n\
-             Changes Requested: 🔴 {}\n\
-             Comments: 💬 {}\n\n\
-             Recent Reviews:\n{}{}",
-            reviews.len(),
+            "\x1b[36m\u{f06e} PR Reviews: #{}\x1b[0m\n  \u{f05a} Total: {} · Approved: {} · Changes requested: {}",
             args.pull_number,
-            args.owner,
-            args.repo,
+            reviews.len(),
             approved,
-            changes_requested,
-            commented,
-            review_preview,
-            more_indicator
+            changes_requested
         );
 
         // Serialize full metadata

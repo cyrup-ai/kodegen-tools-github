@@ -65,64 +65,30 @@ impl Tool for ListCommitsTool {
         let commits =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        
-        let filters_applied = vec![
-            args.sha.as_ref().map(|s| format!("branch/sha: {}", s)),
-            args.path.as_ref().map(|p| format!("path: {}", p)),
-            args.author.as_ref().map(|a| format!("author: {}", a)),
-            args.since.as_ref().map(|s| format!("since: {}", s)),
-            args.until.as_ref().map(|u| format!("until: {}", u)),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(", ");
+        // Build human-readable summary with ANSI colors and Nerd Font icons
+        // Following the established codebase pattern (see search_code.rs, read_file.rs)
 
-        let filters_text = if !filters_applied.is_empty() {
-            format!("\nFilters: {}", filters_applied)
-        } else {
-            String::new()
-        };
-
-        let commit_preview = commits
-            .iter()
-            .take(5)
-            .map(|commit| {
-                let sha = commit.sha.as_str();
-                let message = commit.commit.message.as_str();
-                let author = commit.commit.author.as_ref()
-                    .map(|a| a.name.as_str())
-                    .unwrap_or("Unknown");
-                
-                let message_first_line = message.lines().next().unwrap_or(message);
-                let message_preview = if message_first_line.len() > 60 {
-                    format!("{}...", &message_first_line[..60])
+        // Extract summary data
+        let total = commits.len();
+        let branch = args.sha.as_deref().unwrap_or("default");
+        let latest_msg = commits
+            .first()
+            .map(|c| {
+                let first_line = c.commit.message.lines().next().unwrap_or(&c.commit.message);
+                if first_line.len() > 50 {
+                    format!("{}...", &first_line[..50])
                 } else {
-                    message_first_line.to_string()
-                };
-                
-                format!("  📝 {} - {} (@{})", &sha[..7], message_preview, author)
+                    first_line.to_string()
+                }
             })
-            .collect::<Vec<_>>()
-            .join("\n");
+            .unwrap_or_else(|| "No commits".to_string());
 
-        let more_indicator = if commits.len() > 5 {
-            format!("\n  ... and {} more commits", commits.len() - 5)
-        } else {
-            String::new()
-        };
-
+        // Format output - EXACTLY 2 lines
+        // Line 1: Cyan with git commit icon, repository context
+        // Line 2: Info icon with summary statistics
         let summary = format!(
-            "📜 Retrieved {} commit(s)\n\n\
-             Repository: {}/{}{}\n\n\
-             Recent commits:\n{}{}",
-            commits.len(),
-            args.owner,
-            args.repo,
-            filters_text,
-            commit_preview,
-            more_indicator
+            "\x1b[36m Commits: {}/{}\x1b[0m\n 󰈙 Total: {} · Branch: {} · Latest: {}",
+            args.owner, args.repo, total, branch, latest_msg
         );
 
         // Serialize full metadata

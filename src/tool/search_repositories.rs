@@ -71,57 +71,25 @@ impl Tool for SearchRepositoriesTool {
 
         // Build human-readable summary
         let total_count = page.total_count.unwrap_or(0);
-        let incomplete = page.incomplete_results.unwrap_or(false);
         let items = &page.items;
 
-        let result_preview = items
-            .iter()
-            .take(5)
-            .map(|item| {
-                let full_name = item.full_name.as_deref()
-                    .unwrap_or("unknown");
-                let description = item.description.as_deref()
-                    .unwrap_or("No description");
-                let stars = item.stargazers_count.unwrap_or(0);
-                let language = item.language.as_ref()
-                    .and_then(|l| l.as_str())
-                    .unwrap_or("Unknown");
-                
-                let desc_preview = if description.len() > 60 {
-                    format!("{}...", &description[..60])
-                } else {
-                    description.to_string()
-                };
-                
-                format!("  ⭐ {} stars - {} [{}]\n      {}", stars, full_name, language, desc_preview)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let more_indicator = if items.len() > 5 {
-            format!("\n  ... and {} more repositories", items.len() - 5)
+        let summary = if items.is_empty() {
+            format!(
+                "\x1b[36m Repository Search: {}\x1b[0m\n 󰋗 Results: {} · Top: N/A",
+                args.query,
+                total_count
+            )
         } else {
-            String::new()
+            let first_repo = items[0].full_name.as_deref().unwrap_or("N/A");
+            let first_stars = items[0].stargazers_count.unwrap_or(0);
+            format!(
+                "\x1b[36m Repository Search: {}\x1b[0m\n 󰋗 Results: {} · Top: {} ⭐ {}",
+                args.query,
+                total_count,
+                first_repo,
+                first_stars
+            )
         };
-
-        let incomplete_warning = if incomplete {
-            "\n\n⚠️  Search results may be incomplete (query timed out)"
-        } else {
-            ""
-        };
-
-        let summary = format!(
-            "🔍 Repository search: \"{}\"\n\n\
-             Total matches: {}\n\
-             Results in this page: {}\n\n\
-             Top results:\n{}{}{}",
-            args.query,
-            total_count,
-            items.len(),
-            result_preview,
-            more_indicator,
-            incomplete_warning
-        );
 
         // Serialize full metadata
         let json_str = serde_json::to_string_pretty(&page)

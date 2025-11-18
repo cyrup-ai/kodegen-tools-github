@@ -45,11 +45,6 @@ impl Tool for GetPullRequestStatusTool {
             .personal_token(token)
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
-
-        // Clone values before moving them
-        let owner = args.owner.clone();
-        let repo = args.repo.clone();
-
         let task_result = client
             .get_pull_request_status(args.owner, args.repo, args.pr_number)
             .await;
@@ -63,35 +58,42 @@ impl Tool for GetPullRequestStatusTool {
         // Build dual-content response
         let mut contents = Vec::new();
 
-        // Content[0]: Human-Readable Summary
-        let mergeable_str = if status.pr.mergeable.unwrap_or(false) {
-            "✓ Yes"
-        } else {
-            "✗ No"
+        // Content[0]: Human-Readable Summary (2-line ANSI + Nerd Font format)
+
+        // Map state to lowercase string (match on enum, don't use Debug formatting)
+        let state_str = match status.pr.state {
+            Some(octocrab::models::IssueState::Open) => "open",
+            Some(octocrab::models::IssueState::Closed) => "closed",
+            _ => "unknown",
         };
-        
-        let state_str = status.pr.state.as_ref()
-            .map(|s| format!("{:?}", s))
-            .unwrap_or_else(|| "unknown".to_string());
-        
+
+        // Map mergeable to yes/no
+        let mergeable = if status.pr.mergeable.unwrap_or(false) { 
+            "yes" 
+        } else { 
+            "no" 
+        };
+
+        // Map mergeable_state to check status
+        let checks = match &status.pr.mergeable_state {
+            Some(octocrab::models::pulls::MergeableState::Clean) => "pass",
+            Some(octocrab::models::pulls::MergeableState::Unstable) => "pass",
+            Some(octocrab::models::pulls::MergeableState::HasHooks) => "pass",
+            Some(octocrab::models::pulls::MergeableState::Dirty) => "fail",
+            Some(octocrab::models::pulls::MergeableState::Blocked) => "pending",
+            Some(octocrab::models::pulls::MergeableState::Behind) => "pending",
+            Some(octocrab::models::pulls::MergeableState::Draft) => "pending",
+            _ => "pending",
+        };
+
+        // Build 2-line ANSI cyan output with Nerd Font icons
         let summary = format!(
-            "🔄 Pull Request #{} Status\n\n\
-             Repository: {}/{}\n\
-             Title: {}\n\
-             State: {}\n\
-             Mergeable: {}\n\
-             Merge Status: {}\n\n\
-             Ready to merge: {}",
+            "\x1b[36m PR Status: #{}\x1b[0m\n\
+              State: {} · Mergeable: {} · Checks: {}",
             status.pr.number,
-            owner,
-            repo,
-            status.pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
             state_str,
-            mergeable_str,
-            status.pr.mergeable_state.as_ref()
-                .map(|s| format!("{:?}", s))
-                .unwrap_or_else(|| "unknown".to_string()).as_str(),
-            if status.pr.mergeable.unwrap_or(false) { "Yes" } else { "No" }
+            mergeable,
+            checks
         );
         contents.push(Content::text(summary));
 

@@ -61,18 +61,11 @@ impl Tool for RequestCopilotReviewTool {
         // Handle inner Result (GitHub API error)
         api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
+        // Build dual-content response
         let summary = format!(
-            "🤖 Requested GitHub Copilot review for PR #{}\n\n\
-             Repository: {}/{}\n\n\
-             ✓ Review request submitted successfully\n\n\
-             Next steps:\n\
-             • Wait a few moments for Copilot to analyze the PR\n\
-             • Check PR comments for Copilot's feedback\n\
-             • Use github_get_pull_request_reviews to see all reviews",
-            args.pull_number,
-            args.owner,
-            args.repo
+            "\x1b[35m Copilot Review Requested: PR #{}\x1b[0m\n\
+             󰓫 Status: pending",
+            args.pull_number
         );
 
         // Serialize metadata

@@ -87,49 +87,19 @@ impl Tool for SearchUsersTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
+        // Extract data
         let total_count = page.total_count.unwrap_or(0);
-        let incomplete = page.incomplete_results.unwrap_or(false);
-        let items = &page.items;
+        let first_user_login = page.items
+            .first()
+            .map(|u| u.login.as_str())
+            .unwrap_or("N/A");
 
-        let result_preview = items
-            .iter()
-            .take(5)
-            .map(|item| {
-                let login = item.login.as_str();
-                let user_type = item.r#type.as_str();
-                let html_url = item.html_url.as_str();
-                
-                let type_emoji = if user_type == "Organization" { "🏢" } else { "👤" };
-                
-                format!("  {} @{}\n      {}", type_emoji, login, html_url)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let more_indicator = if items.len() > 5 {
-            format!("\n  ... and {} more users", items.len() - 5)
-        } else {
-            String::new()
-        };
-
-        let incomplete_warning = if incomplete {
-            "\n\n⚠️  Search results may be incomplete (query timed out)"
-        } else {
-            ""
-        };
-
+        // Build 2-line summary with ANSI colors and Nerd Font icons
         let summary = format!(
-            "🔍 User search: \"{}\"\n\n\
-             Total matches: {}\n\
-             Results in this page: {}\n\n\
-             Top results:\n{}{}{}",
+            "\x1b[36m\u{f002} User Search: {}\x1b[0m\n \u{f007} Results: {} · Top: {}",
             args.query,
             total_count,
-            items.len(),
-            result_preview,
-            more_indicator,
-            incomplete_warning
+            first_user_login
         );
 
         // Serialize full metadata

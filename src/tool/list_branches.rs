@@ -56,40 +56,19 @@ impl Tool for ListBranchesTool {
         let branches =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let branch_preview = branches
-            .iter()
-            .take(10)
-            .map(|branch| {
-                let protected = branch.protected;
-                let protection_emoji = if protected { "🔒" } else { "🌿" };
-                format!("  {} {}", protection_emoji, branch.name)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Get default branch (use first branch as fallback)
+        let default_branch = branches
+            .first()
+            .map(|b| b.name.as_str())
+            .unwrap_or("unknown");
 
-        let more_indicator = if branches.len() > 10 {
-            format!("\n  ... and {} more branches", branches.len() - 10)
-        } else {
-            String::new()
-        };
-
-        let protected_count = branches
-            .iter()
-            .filter(|b| b.protected)
-            .count();
-
+        // Build 2-line human-readable summary with ANSI colors and Nerd Font icons
         let summary = format!(
-            "🌿 Retrieved {} branch(es)\n\n\
-             Repository: {}/{}\n\
-             Protected branches: {}\n\n\
-             Branches:\n{}{}",
-            branches.len(),
+            "\x1b[36m Branches: {}/{}\x1b[0m\n 󰋼 Total: {} · Default: {}",
             args.owner,
             args.repo,
-            protected_count,
-            branch_preview,
-            more_indicator
+            branches.len(),
+            default_branch
         );
 
         // Serialize full metadata

@@ -63,16 +63,9 @@ impl Tool for GetCommitTool {
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
         // Build human-readable summary
-        let commit_message = commit.commit.message.as_str();
-        
         let author_name = commit.commit.author.as_ref()
             .map(|a| a.name.as_str())
             .unwrap_or("Unknown");
-        
-        let author_date = commit.commit.author.as_ref()
-            .and_then(|a| a.date.as_ref())
-            .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
         
         let additions = commit.stats.as_ref()
             .and_then(|s| s.additions)
@@ -86,33 +79,14 @@ impl Tool for GetCommitTool {
             .map(|f| f.len())
             .unwrap_or(0);
 
-        let message_preview = if commit_message.len() > 100 {
-            format!("{}...", &commit_message[..100])
-        } else {
-            commit_message.to_string()
-        };
-
+        let sha_short = &args.commit_sha[..7.min(args.commit_sha.len())];
         let summary = format!(
-            "📝 Commit: {}\n\n\
-             Repository: {}/{}\n\
-             Author: {}\n\
-             Date: {}\n\n\
-             Message:\n{}\n\n\
-             Changes:\n\
-             • Files changed: {}\n\
-             • Additions: +{}\n\
-             • Deletions: -{}\n\
-             • Total: {} lines",
-            &args.commit_sha[..7.min(args.commit_sha.len())],
-            args.owner,
-            args.repo,
+            "\x1b[36m Commit: {}\x1b[0m\n  Author: {} · Files: {} · +{} -{}",
+            sha_short,
             author_name,
-            author_date,
-            message_preview,
             files_count,
             additions,
-            deletions,
-            additions + deletions
+            deletions
         );
 
         // Serialize full metadata
