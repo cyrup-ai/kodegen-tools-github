@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs, GITHUB_ADD_PULL_REQUEST_REVIEW_COMMENT};
-use kodegen_mcp_tool::{Tool, error::McpError};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for adding inline review comments to a pull request
@@ -36,7 +36,7 @@ impl Tool for AddPullRequestReviewCommentTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))

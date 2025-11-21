@@ -1,5 +1,5 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
 use kodegen_mcp_schema::github::{CreatePullRequestArgs, GITHUB_CREATE_PULL_REQUEST};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
@@ -37,7 +37,7 @@ impl Tool for CreatePullRequestTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;

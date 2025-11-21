@@ -2,7 +2,7 @@
 
 use anyhow;
 use kodegen_mcp_schema::github::{GetMeArgs, GetMePromptArgs, GITHUB_GET_ME};
-use kodegen_mcp_tool::{Tool, error::McpError};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use serde_json::Value;
 
@@ -40,7 +40,7 @@ impl Tool for GetMeTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, _args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, _args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(

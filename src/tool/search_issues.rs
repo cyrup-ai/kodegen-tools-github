@@ -3,7 +3,7 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs, GITHUB_SEARCH_ISSUES};
-use kodegen_mcp_tool::{Tool, error::McpError};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use serde_json::json;
 
@@ -42,7 +42,7 @@ impl Tool for SearchIssuesTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))

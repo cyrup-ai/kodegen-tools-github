@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_schema::github::{SearchUsersArgs, GITHUB_SEARCH_USERS};
-use kodegen_mcp_tool::{McpError, Tool};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -36,7 +36,7 @@ impl Tool for SearchUsersTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;

@@ -2,7 +2,7 @@
 
 use anyhow;
 use kodegen_mcp_schema::github::{CreateIssueArgs, CreateIssuePromptArgs, GITHUB_CREATE_ISSUE};
-use kodegen_mcp_tool::{Tool, error::McpError};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for creating GitHub issues
@@ -38,7 +38,7 @@ impl Tool for CreateIssueTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
