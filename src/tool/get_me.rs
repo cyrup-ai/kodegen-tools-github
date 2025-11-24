@@ -129,7 +129,35 @@ impl Tool for GetMeTool {
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "include_use_cases".to_string(),
+                title: None,
+                description: Some(
+                    "Include practical use cases and examples of when to use get_me (default: true)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "include_fields".to_string(),
+                title: None,
+                description: Some(
+                    "Include detailed explanation of all returned user fields (default: true)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "include_auth_details".to_string(),
+                title: None,
+                description: Some(
+                    "Include authentication requirements and token setup details (default: true)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
     
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

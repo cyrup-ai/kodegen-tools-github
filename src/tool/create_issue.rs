@@ -94,7 +94,29 @@ impl Tool for CreateIssueTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "What aspect of create_issue to focus on: 'basic' for core functionality, \
+                     'labels' for issue categorization, 'assignees' for team assignment, \
+                     'authentication' for GITHUB_TOKEN setup, or 'team-collaboration' for team workflows"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "use_case".to_string(),
+                title: None,
+                description: Some(
+                    "Repository context for examples: 'personal' for solo projects, \
+                     'team' for organizational repos, or 'open-source' for community projects"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

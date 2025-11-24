@@ -139,7 +139,18 @@ impl Tool for SecretScanningAlertsTool {
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "use_case".to_string(),
+            title: None,
+            description: Some(
+                "Optional use case context for customizing teaching focus. \
+                 Examples: 'security-incident-response' (focus on immediate remediation), \
+                 'compliance-audit' (emphasize audit trail and resolutions), \
+                 'ci-cd-integration' (explain automation patterns), \
+                 'developer-onboarding' (beginner-friendly examples)".to_string(),
+            ),
+            required: Some(false),
+        }]
     }
     
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

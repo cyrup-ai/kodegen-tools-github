@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/img/banner.png" alt="Kodegen AI Banner" width="100%" />
+</div>
+
 # kodegen_github
 
 GitHub API operations via Octocrab with MCP tool wrappers for AI agents.

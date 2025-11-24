@@ -137,7 +137,24 @@ impl Tool for AddPullRequestReviewCommentTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "comment_type".to_string(),
+                title: None,
+                description: Some(
+                    "Specific comment type to focus on (options: 'single-line', 'multi-line', 'threaded', or 'all' for comprehensive examples)".to_string()
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "include_edge_cases".to_string(),
+                title: None,
+                description: Some(
+                    "Include edge cases and advanced scenarios (yes/no/true/false) - coverage of LEFT side comments, permission errors, and commit validation".to_string()
+                ),
+                required: Some(false),
+            },
+        ]
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

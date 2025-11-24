@@ -252,6 +252,14 @@ let text = String::from_utf8(content)?;
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "reference_type".to_string(),
+            title: None,
+            description: Some(
+                "Optional reference type to emphasize in examples (e.g., 'branches', 'tags', 'commits')"
+                    .to_string(),
+            ),
+            required: Some(false),
+        }]
     }
 }

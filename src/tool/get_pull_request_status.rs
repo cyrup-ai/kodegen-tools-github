@@ -178,6 +178,25 @@ The response includes comprehensive status information:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Which aspect of PR status to emphasize: 'merge_eligibility', 'ci_checks', 'reviews', 'conflicts', or 'metadata' (defaults to comprehensive overview)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "show_mergeable_states".to_string(),
+                title: None,
+                description: Some(
+                    "Include detailed mergeable_state value reference (clean, dirty, blocked, unstable, behind, draft) for advanced merge status interpretation"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

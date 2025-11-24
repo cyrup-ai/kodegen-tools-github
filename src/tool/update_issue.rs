@@ -117,10 +117,140 @@ impl Tool for UpdateIssueTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "scope".to_string(),
+                title: Some("Update Scope".to_string()),
+                description: Some(
+                    "Which update types to focus on: 'state' (open/closed), 'labels', 'assignees', \
+                     'title_body', or 'all' (default). Narrows teaching examples to specific fields."
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "detail_level".to_string(),
+                title: Some("Teaching Detail Level".to_string()),
+                description: Some(
+                    "How detailed the examples should be: 'basic' for simple one-example-per-type \
+                     or 'advanced' for multiple scenarios and edge cases. Defaults to 'basic'."
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "include_warnings".to_string(),
+                title: Some("Include Important Notes".to_string()),
+                description: Some(
+                    "Whether to include critical warnings about tool behavior (default: true). \
+                     Emphasizes that labels and assignees are replacement operations, not additive."
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
+    async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
+        let scope = args.scope.as_deref().unwrap_or("all").to_lowercase();
+        let detail_level = args.detail_level.as_deref().unwrap_or("basic").to_lowercase();
+        let include_warnings = args.include_warnings.unwrap_or(true);
+
+        // Build examples based on scope
+        let mut examples = String::new();
+
+        if scope == "all" || scope == "state" {
+            examples.push_str(
+                "Close an issue:\n\
+                update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"state\": \"closed\"})\n\n"
+            );
+            if detail_level == "advanced" {
+                examples.push_str(
+                    "Reopen a closed issue:\n\
+                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"state\": \"open\"})\n\n"
+                );
+            }
+        }
+
+        if scope == "all" || scope == "title_body" {
+            examples.push_str(
+                "Update title and body:\n\
+                update_issue({\n\
+                  \"owner\": \"octocat\",\n\
+                  \"repo\": \"hello-world\",\n\
+                  \"issue_number\": 42,\n\
+                  \"title\": \"Updated: Bug in login\",\n\
+                  \"body\": \"Revised description...\"\n\
+                })\n\n"
+            );
+            if detail_level == "advanced" {
+                examples.push_str(
+                    "Update only the body:\n\
+                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"body\": \"Appended note: fixed in latest patch\"})\n\n"
+                );
+            }
+        }
+
+        if scope == "all" || scope == "labels" {
+            examples.push_str(
+                "Replace labels:\n\
+                update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"labels\": [\"bug\", \"resolved\"]})\n\n"
+            );
+            if detail_level == "advanced" {
+                examples.push_str(
+                    "Clear all labels:\n\
+                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"labels\": []})\n\n"
+                );
+            }
+        }
+
+        if scope == "all" || scope == "assignees" {
+            examples.push_str(
+                "Update assignees:\n\
+                update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"assignees\": [\"alice\", \"bob\"]})\n\n"
+            );
+            if detail_level == "advanced" {
+                examples.push_str(
+                    "Unassign everyone:\n\
+                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"assignees\": []})\n\n"
+                );
+            }
+        }
+
+        if scope == "all" {
+            examples.push_str(
+                "Combined update (multiple fields):\n\
+                update_issue({\n\
+                  \"owner\": \"octocat\",\n\
+                  \"repo\": \"hello-world\",\n\
+                  \"issue_number\": 42,\n\
+                  \"state\": \"closed\",\n\
+                  \"labels\": [\"bug\", \"fixed\"],\n\
+                  \"body\": \"Fixed in PR #123\"\n\
+                })\n\n"
+            );
+        }
+
+        // Build notes based on include_warnings parameter
+        let notes = if include_warnings {
+            "Important notes:\n\
+            - All fields are optional - only specified fields are updated\n\
+            - state: \"open\" or \"closed\"\n\
+            - labels: REPLACES all existing labels (not additive)\n\
+            - assignees: REPLACES all existing assignees (not additive)\n\
+            - To clear labels or assignees, pass empty array: []\n\
+            - Requires write access to the repository\n\
+            - GITHUB_TOKEN environment variable must be set"
+        } else {
+            "All fields are optional - only specified fields are updated"
+        };
+
+        let assistant_response = format!(
+            "Use the update_issue tool to modify an existing GitHub issue:\n\n\
+             {examples}\n\
+             {notes}"
+        );
+
         Ok(vec![
             PromptMessage {
                 role: PromptMessageRole::User,
@@ -128,40 +258,7 @@ impl Tool for UpdateIssueTool {
             },
             PromptMessage {
                 role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use the update_issue tool to modify an existing GitHub issue:\n\n\
-                     Close an issue:\n\
-                     update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"state\": \"closed\"})\n\n\
-                     Update title and body:\n\
-                     update_issue({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"issue_number\": 42,\n\
-                       \"title\": \"Updated: Bug in login\",\n\
-                       \"body\": \"Revised description...\"\n\
-                     })\n\n\
-                     Replace labels:\n\
-                     update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"labels\": [\"bug\", \"resolved\"]})\n\n\
-                     Update assignees:\n\
-                     update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"assignees\": [\"alice\", \"bob\"]})\n\n\
-                     Combined update:\n\
-                     update_issue({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"issue_number\": 42,\n\
-                       \"state\": \"closed\",\n\
-                       \"labels\": [\"bug\", \"fixed\"],\n\
-                       \"body\": \"Fixed in PR #123\"\n\
-                     })\n\n\
-                     Important notes:\n\
-                     - All fields are optional - only specified fields are updated\n\
-                     - state: \"open\" or \"closed\"\n\
-                     - labels: REPLACES all existing labels (not additive)\n\
-                     - assignees: REPLACES all existing assignees (not additive)\n\
-                     - To clear labels or assignees, pass empty array: []\n\
-                     - Requires write access to the repository\n\
-                     - GITHUB_TOKEN environment variable must be set",
-                ),
+                content: PromptMessageContent::text(assistant_response),
             },
         ])
     }

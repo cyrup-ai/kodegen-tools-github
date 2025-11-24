@@ -160,6 +160,13 @@ When creating a PR from a fork:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "scenario_focus".to_string(),
+            title: None,
+            description: Some(
+                "Which PR scenario to focus on: 'basic' (simple feature branches), 'draft' (work-in-progress), 'cross-fork' (upstream contributions), or 'all' for comprehensive examples".to_string(),
+            ),
+            required: Some(false),
+        }]
     }
 }

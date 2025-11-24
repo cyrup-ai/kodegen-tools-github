@@ -86,7 +86,27 @@ impl Tool for AddIssueCommentTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "comment_style".to_string(),
+                title: Some("Comment Style".to_string()),
+                description: Some(
+                    "Optional style/type of comment to focus on: 'acknowledgment' (thanking contributors), \
+                     'suggestion' (proposing changes), 'summary' (summarizing discussion), 'feedback' (reviewing code), \
+                     'question' (asking for clarification), or 'all' (general examples)".to_string()
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "focus_features".to_string(),
+                title: Some("Feature Focus".to_string()),
+                description: Some(
+                    "Optional features to emphasize: 'markdown' (formatting, code blocks), 'mentions' (@user notifications), \
+                     'references' (issue/PR links, commits), 'reactions' (emoji usage), or 'all' (show everything)".to_string()
+                ),
+                required: Some(false),
+            },
+        ]
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

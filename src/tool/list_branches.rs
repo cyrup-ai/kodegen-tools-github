@@ -153,6 +153,23 @@ Common patterns you might find:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "detail_level".to_string(),
+                title: None,
+                description: Some(
+                    "Level of detail for examples: 'basic' (simple cases), 'advanced' (pagination, protected branches), or 'all' (comprehensive)".to_string()
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "focus".to_string(),
+                title: None,
+                description: Some(
+                    "Specific aspect to focus on: 'pagination', 'protected_branches', 'naming_conventions', 'use_cases', or 'all'".to_string()
+                ),
+                required: Some(false),
+            }
+        ]
     }
 }

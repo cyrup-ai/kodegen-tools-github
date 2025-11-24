@@ -190,6 +190,34 @@ The response includes:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "repository_type".to_string(),
+                title: None,
+                description: Some(
+                    "Type of repository being created: 'quick-prototype', 'open-source', 'private', 'monorepo'"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "complexity_level".to_string(),
+                title: None,
+                description: Some(
+                    "Example complexity: 'basic' (minimal parameters), 'intermediate' (standard setup), 'advanced' (full configuration)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "feature_focus".to_string(),
+                title: None,
+                description: Some(
+                    "Specific capability to emphasize: 'privacy', 'initialization', 'naming-conventions', 'best-practices'"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

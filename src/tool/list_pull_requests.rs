@@ -134,7 +134,15 @@ impl Tool for ListPullRequestsTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "focus_area".to_string(),
+            title: None,
+            description: Some(
+                "Optional focus area: 'overview', 'filtering', 'pagination', or 'advanced'"
+                    .to_string(),
+            ),
+            required: Some(false),
+        }]
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

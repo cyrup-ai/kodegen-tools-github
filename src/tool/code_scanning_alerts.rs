@@ -167,11 +167,24 @@ impl Tool for CodeScanningAlertsTool {
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Optional focus area for examples: 'basic' (filtering), 'dismissal' (dismissed alerts), \
+                     'analysis_tools' (CodeQL/Semgrep), 'severity' (severity interpretation), \
+                     or 'remediation' (fixing issues)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            }
+        ]
     }
     
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
         Ok(vec![
+            // BASIC USAGE EXAMPLE
             PromptMessage {
                 role: PromptMessageRole::User,
                 content: PromptMessageContent::text(
@@ -217,6 +230,55 @@ impl Tool for CodeScanningAlertsTool {
                      - Token needs 'security_events' scope\n\
                      - Repository must have code scanning enabled\n\
                      - User must have appropriate permissions"
+                ),
+            },
+            
+            // ADVANCED SCENARIOS: DISMISSED ALERTS & ANALYSIS TOOLS
+            PromptMessage {
+                role: PromptMessageRole::User,
+                content: PromptMessageContent::text(
+                    "How do I work with dismissed alerts and different analysis tools?"
+                ),
+            },
+            PromptMessage {
+                role: PromptMessageRole::Assistant,
+                content: PromptMessageContent::text(
+                    "You can filter dismissed alerts and target specific analysis tools:\n\n\
+                     # Get all dismissed alerts (e.g., false positives)\n\
+                     code_scanning_alerts({\n\
+                       \"owner\": \"octocat\",\n\
+                       \"repo\": \"hello-world\",\n\
+                       \"state\": \"dismissed\"\n\
+                     })\n\n\
+                     # Get alerts from specific tool only (CodeQL)\n\
+                     code_scanning_alerts({\n\
+                       \"owner\": \"octocat\",\n\
+                       \"repo\": \"hello-world\",\n\
+                       \"state\": \"open\",\n\
+                       \"tool_name\": \"CodeQL\"\n\
+                     })\n\n\
+                     # Combine filters: critical CodeQL alerts on main branch\n\
+                     code_scanning_alerts({\n\
+                       \"owner\": \"octocat\",\n\
+                       \"repo\": \"hello-world\",\n\
+                       \"state\": \"open\",\n\
+                       \"severity\": \"critical\",\n\
+                       \"tool_name\": \"CodeQL\",\n\
+                       \"ref_name\": \"main\"\n\
+                     })\n\n\
+                     Common analysis tools:\n\
+                     - CodeQL: GitHub's semantic analysis engine\n\
+                     - Semgrep: Pattern-based static analysis\n\
+                     - Custom tools: Can integrate with other SAST tools\n\n\
+                     Alert states explained:\n\
+                     - \"open\": Active, needs attention\n\
+                     - \"dismissed\": Marked as not applicable (false positive, intentional, etc.)\n\
+                     - \"closed\": Fixed in the codebase\n\n\
+                     Key gotchas:\n\
+                     - Dismissed alerts may have reasons: false_positive, inaccurate, wont_fix, used_in_tests\n\
+                     - Results limited to 30 per page; pagination required for large result sets\n\
+                     - Alerts from main branch only by default; use ref_name to check other branches\n\
+                     - Closed alerts appear when code is fixed, not when manually dismissed"
                 ),
             },
         ])

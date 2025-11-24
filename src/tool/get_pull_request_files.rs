@@ -196,6 +196,25 @@ The response includes detailed information for each changed file:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Which aspect to emphasize in examples (e.g., 'change_types', 'use_cases', 'best_practices', 'workflows')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "language_focus".to_string(),
+                title: None,
+                description: Some(
+                    "Programming language to focus examples on (e.g., 'rust', 'python', 'typescript', 'all')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

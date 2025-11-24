@@ -323,6 +323,25 @@ Each result item contains:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Optional focus area for the teaching prompt (e.g., 'syntax', 'qualifiers', 'rate_limits', 'examples', 'best_practices', 'use_cases')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "language".to_string(),
+                title: None,
+                description: Some(
+                    "Optional programming language to focus examples on (e.g., 'rust', 'python', 'javascript', 'go', 'typescript')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

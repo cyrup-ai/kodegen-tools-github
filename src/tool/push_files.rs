@@ -120,7 +120,28 @@ impl Tool for PushFilesTool {
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "use_case".to_string(),
+                title: None,
+                description: Some(
+                    "Optional use case to focus examples on: 'bulk_setup' (initial repo setup), \
+                     'binary_files' (images, binaries), or 'encoding' (base64 workflows)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "focus".to_string(),
+                title: None,
+                description: Some(
+                    "Optional feature to focus on: 'atomicity' (transaction guarantees), \
+                     'base64' (encoding/decoding), or 'permissions' (GitHub token scopes)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
     
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

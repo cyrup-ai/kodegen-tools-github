@@ -1,6 +1,6 @@
 use anyhow;
 use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
-use kodegen_mcp_schema::github::{CreateBranchArgs, GITHUB_CREATE_BRANCH};
+use kodegen_mcp_schema::github::{CreateBranchArgs, CreateBranchPromptArgs, GITHUB_CREATE_BRANCH};
 use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
@@ -10,7 +10,7 @@ pub struct CreateBranchTool;
 
 impl Tool for CreateBranchTool {
     type Args = CreateBranchArgs;
-    type PromptArgs = ();
+    type PromptArgs = CreateBranchPromptArgs;
 
     fn name() -> &'static str {
         GITHUB_CREATE_BRANCH
@@ -209,6 +209,16 @@ The response includes:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "focus".to_string(),
+            title: None,
+            description: Some(
+                "Customize teaching examples by focus area: \
+                 'basic' for simple feature branch creation, \
+                 'advanced' for Git workflows and release management, \
+                 'troubleshooting' for error handling and edge cases".to_string()
+            ),
+            required: Some(false),
+        }]
     }
 }

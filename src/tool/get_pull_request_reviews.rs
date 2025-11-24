@@ -98,7 +98,26 @@ impl Tool for GetPullRequestReviewsTool {
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Optional focus area for teaching prompt (e.g., 'approval_workflow', 'blocking_reviews', 'timeline', 'filtering')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "use_case".to_string(),
+                title: None,
+                description: Some(
+                    "Optional use case context for examples (e.g., 'merge_gates', 'permission_checks', 'ci_integration')"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

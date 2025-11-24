@@ -194,6 +194,25 @@ To ensure the PR hasn't changed since you last reviewed it:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "merge_strategy".to_string(),
+                title: None,
+                description: Some(
+                    "Specific merge strategy to focus examples on: 'merge' (default, creates merge commit), \
+                     'squash' (combines commits), or 'rebase' (linear history)".to_string(),
+                ),
+                required: Some(false),
+            },
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Focus area for teaching: 'basic' (simple merges), 'advanced' (custom messages and SHA \
+                     verification), 'safety' (best practices and verification), or 'all' (comprehensive)".to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

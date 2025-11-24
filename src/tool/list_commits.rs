@@ -269,6 +269,19 @@ Use ISO 8601 format for since and until parameters:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![
+            PromptArgument {
+                name: "focus_area".to_string(),
+                title: None,
+                description: Some(
+                    "Specific commit filtering scenario to focus teaching on: \
+                     'branches' (SHA/branch filtering), 'authors' (author filtering), \
+                     'dates' (date range filtering), 'paths' (file path filtering), \
+                     'pagination' (result pagination), or 'combined' (complex multi-filter queries)"
+                        .to_string(),
+                ),
+                required: Some(false),
+            },
+        ]
     }
 }

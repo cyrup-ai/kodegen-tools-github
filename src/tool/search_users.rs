@@ -369,6 +369,14 @@ Each user object contains:
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![]
+        vec![PromptArgument {
+            name: "focus_area".to_string(),
+            title: None,
+            description: Some(
+                "Optional focus area for teaching: 'basic_search', 'advanced_filtering', 'sorting_strategies', or 'real_world_workflows'"
+                    .to_string(),
+            ),
+            required: Some(false),
+        }]
     }
 }
