@@ -18,7 +18,7 @@ GitHub API operations via Octocrab with MCP tool wrappers for AI agents.
 
 ### Issue Operations
 
-#### create_issue
+#### create_issue 
 
 Create a new issue in a GitHub repository.
 
