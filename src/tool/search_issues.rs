@@ -2,10 +2,12 @@
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{SearchIssuesArgs, SearchIssuesPromptArgs, GITHUB_SEARCH_ISSUES};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_schema::github::{
+    SearchIssuesArgs, SearchIssuesPromptArgs, GitHubSearchIssuesOutput, GitHubIssueSummary,
+    GITHUB_SEARCH_ISSUES,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for searching GitHub issues using GitHub's search syntax
 #[derive(Clone)]
@@ -42,7 +44,7 @@ impl Tool for SearchIssuesTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -72,41 +74,44 @@ impl Tool for SearchIssuesTool {
             issues.push(issue);
         }
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+        // Convert to typed output
+        let issue_summaries: Vec<GitHubIssueSummary> = issues
+            .iter()
+            .map(|issue| {
+                let state_str = match issue.state {
+                    octocrab::models::IssueState::Open => "open",
+                    octocrab::models::IssueState::Closed => "closed",
+                    _ => "unknown",
+                };
+                let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
 
-        // Content[0]: Human-Readable Summary (2 lines with icons)
-        // Line 1: Cyan with search icon
-        // Line 2: Plain text with issue icon and first issue title
-        let first_issue_title = issues.first()
-            .map(|i| {
-                let title = &i.title;
-                if title.len() > 50 {
-                    format!("{}...", &title[..47])
-                } else {
-                    title.to_string()
+                GitHubIssueSummary {
+                    number: issue.number,
+                    title: issue.title.clone(),
+                    state: state_str.to_string(),
+                    author: issue.user.login.clone(),
+                    created_at: issue.created_at.to_rfc3339(),
+                    labels,
                 }
             })
-            .unwrap_or_else(|| "None".to_string());
+            .collect();
 
-        let summary = format!(
-            "\x1b[36m\u{f002} Issue Search: {}\x1b[0m\n \u{f05a} Results: {} · Top: {}",
+        let output = GitHubSearchIssuesOutput {
+            success: true,
+            query: query.clone(),
+            total_count: issue_summaries.len() as u32,
+            items: issue_summaries,
+        };
+
+        // Build user-friendly display string
+        let display = format!(
+            "GitHub Issues Search Results\n\nQuery: {}\nTotal Results: {}\nResults Returned: {}\n\nSearch completed successfully.",
             query,
-            issues.len(),
-            first_issue_title
+            output.total_count,
+            output.items.len()
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let metadata = json!({
-            "issues": issues,
-            "count": issues.len()
-        });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -134,233 +139,61 @@ impl Tool for SearchIssuesTool {
     }
 
     async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        // Extract and default arguments
         let focus_area = args.focus_area.as_deref().unwrap_or("all");
-        let include_examples = args.include_examples.unwrap_or(true);
 
-        // Generate user question and assistant response based on focus_area
-        let (user_question, assistant_response) = match focus_area {
+        let assistant_response = match focus_area {
             "basic" => {
-                let question = "How do I search for GitHub issues in specific repositories?";
-                let response = if include_examples {
-                    "The search_issues tool lets you search GitHub repositories by state. Basic examples:\n\n\
-                     Search in specific repo:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
-                     Search by state:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:closed\"})\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                } else {
-                    "Use repo:owner/name to search a specific repository, is:open for open issues, is:closed for closed issues.\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                };
-                (question, response)
+                "The search_issues tool lets you search GitHub repositories. Basic examples:\n\n\
+                 Search in specific repo:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
+                 Search by state:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world is:closed\"})\n\n\
+                 Returns GitHubSearchIssuesOutput with:\n\
+                 - success: boolean\n\
+                 - query: the search query used\n\
+                 - total_count: number of results\n\
+                 - items: array of GitHubIssueSummary objects"
             }
             "filters" => {
-                let question = "How do I filter GitHub issues by labels, assignees, and other criteria?";
-                let response = if include_examples {
-                    "Filter issues by labels, assignees, authors, and dates:\n\n\
-                     FILTER BY LABELS:\n\
-                     Single label:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\
-                     Multiple labels (AND):\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world label:bug label:priority-high\"})\n\n\
-                     FILTER BY PEOPLE:\n\
-                     By assignee:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\
-                     By author:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world author:alice\"})\n\
-                     By participant:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world involves:bob\"})\n\n\
-                     DATE FILTERS:\n\
-                     Created after date:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\
-                     Updated recently:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world updated:>=2024-03-01\"})\n\
-                     Date range:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world created:2024-01-01..2024-12-31\"})\n\n\
-                     TEXT SEARCH:\n\
-                     In title or body:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world authentication error\"})\n\
-                     In title only:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world authentication in:title\"})\n\
-                     In body only:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world error in:body\"})\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                } else {
-                    "Use label:name for labels, assignee:name for assignees, author:name for authors, created:date for date ranges, and in:title/body for text location.\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                };
-                (question, response)
-            }
-            "advanced" => {
-                let question = "How do I combine multiple filters for complex GitHub issue searches?";
-                let response = if include_examples {
-                    "Combine multiple filters for powerful searches:\n\n\
-                     COMBINED FILTERS:\n\
-                     Complex query:\n\
-                     search_issues({\n\
-                       \"query\": \"repo:octocat/hello-world is:open label:bug assignee:alice created:>=2024-01-01\",\n\
-                       \"sort\": \"created\",\n\
-                       \"order\": \"desc\"\n\
-                     })\n\n\
-                     Multiple labels and states:\n\
-                     search_issues({\n\
-                       \"query\": \"repo:octocat/hello-world is:open label:bug label:critical author:alice\"\n\
-                     })\n\n\
-                     Date ranges with participants:\n\
-                     search_issues({\n\
-                       \"query\": \"repo:octocat/hello-world updated:2024-01-01..2024-12-31 involves:bob\"\n\
-                     })\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                } else {
-                    "Combine filters with spaces. Most filters can be combined: labels, assignees, authors, dates, and text search.\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                };
-                (question, response)
-            }
-            "pagination" => {
-                let question = "How do I paginate through search results in the search_issues tool?";
-                let response = if include_examples {
-                    "Navigate through large result sets using pagination parameters:\n\n\
-                     PAGINATION:\n\
-                     First page (default):\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\", \"per_page\": 50})\n\n\
-                     Second page:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\", \"per_page\": 50, \"page\": 2})\n\n\
-                     Different page sizes:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\", \"per_page\": 100})\n\n\
-                     Combine with sorting for consistent results:\n\
-                     search_issues({\n\
-                       \"query\": \"repo:octocat/hello-world is:open\",\n\
-                       \"sort\": \"created\",\n\
-                       \"order\": \"desc\",\n\
-                       \"per_page\": 50,\n\
-                       \"page\": 2\n\
-                     })\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                } else {
-                    "Use per_page (1-100) and page parameters. Default is page 1, per_page 30. Combine with sort and order for consistent pagination.\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set"
-                };
-                (question, response)
+                "Filter issues by labels, assignees, authors, and dates:\n\n\
+                 FILTER BY LABELS:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\n\
+                 FILTER BY PEOPLE:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world author:alice\"})\n\n\
+                 DATE FILTERS:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\n\
+                 Returns GitHubSearchIssuesOutput with typed results."
             }
             _ => {
-                // "all" or default: comprehensive content
-                let question = "How do I search for GitHub issues using the search_issues tool?";
-                let response = "The search_issues tool uses GitHub's powerful search syntax. Here are comprehensive examples:\n\n\
-                     BASIC SEARCHES:\n\
-                     Search in specific repo:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
-                     Search by state:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:closed\"})\n\n\
-                     FILTER BY LABELS:\n\
-                     Single label:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\
-                     Multiple labels (AND):\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world label:bug label:priority-high\"})\n\n\
-                     FILTER BY PEOPLE:\n\
-                     By assignee:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\
-                     By author:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world author:alice\"})\n\
-                     By participant:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world involves:bob\"})\n\n\
-                     DATE FILTERS:\n\
-                     Created after date:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\
-                     Updated recently:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world updated:>=2024-03-01\"})\n\
-                     Date range:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world created:2024-01-01..2024-12-31\"})\n\n\
-                     TEXT SEARCH:\n\
-                     In title or body:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world authentication error\"})\n\
-                     In title only:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world authentication in:title\"})\n\
-                     In body only:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world error in:body\"})\n\n\
-                     COMBINED FILTERS:\n\
-                     Complex query:\n\
-                     search_issues({\n\
-                       \"query\": \"repo:octocat/hello-world is:open label:bug assignee:alice created:>=2024-01-01\",\n\
-                       \"sort\": \"created\",\n\
-                       \"order\": \"desc\"\n\
-                     })\n\n\
-                     SORTING:\n\
-                     - sort: \"created\", \"updated\", \"comments\", \"reactions\"\n\
-                     - order: \"asc\" (ascending) or \"desc\" (descending)\n\n\
-                     PAGINATION:\n\
-                     search_issues({\"query\": \"repo:octocat/hello-world is:open\", \"per_page\": 50, \"page\": 2})\n\n\
-                     IMPORTANT NOTES:\n\
-                     - Search API has stricter rate limits (30 requests/minute authenticated)\n\
-                     - Results are relevance-ranked by default\n\
-                     - Use repo:owner/name to search specific repository\n\
-                     - Combine multiple filters with spaces\n\
-                     - Date format: YYYY-MM-DD\n\
-                     - Use quotes for multi-word searches: \"bug report\"\n\
-                     - GITHUB_TOKEN environment variable must be set";
-                (question, response)
+                "The search_issues tool uses GitHub's powerful search syntax:\n\n\
+                 BASIC SEARCHES:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
+                 FILTER BY LABELS:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\n\
+                 FILTER BY PEOPLE:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\n\
+                 DATE FILTERS:\n\
+                 search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\n\
+                 COMBINED FILTERS:\n\
+                 search_issues({\n\
+                   \"query\": \"repo:octocat/hello-world is:open label:bug assignee:alice\",\n\
+                   \"sort\": \"created\",\n\
+                   \"order\": \"desc\"\n\
+                 })\n\n\
+                 Returns GitHubSearchIssuesOutput with:\n\
+                 - success: boolean\n\
+                 - query: the search query used\n\
+                 - total_count: number of results\n\
+                 - items: array of GitHubIssueSummary (number, title, state, author, created_at, labels)\n\n\
+                 IMPORTANT: Search API has stricter rate limits (30 requests/minute)"
             }
         };
 
         Ok(vec![
             PromptMessage {
                 role: PromptMessageRole::User,
-                content: PromptMessageContent::text(user_question),
+                content: PromptMessageContent::text("How do I search for GitHub issues?"),
             },
             PromptMessage {
                 role: PromptMessageRole::Assistant,

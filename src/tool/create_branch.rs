@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{CreateBranchArgs, CreateBranchPromptArgs, GITHUB_CREATE_BRANCH};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for CreateBranchTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> 
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -56,24 +58,36 @@ impl Tool for CreateBranchTool {
         let reference =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary with ANSI colors and Nerd Font icons
-        let summary = format!(
-            "\x1b[32m Created branch: {}\x1b[0m\n\
-              Repo: {}/{} · From: {}",
-            args.branch_name,
-            args.owner,
-            args.repo,
-            args.sha
+        // Extract SHA from Object enum
+        let sha = match &reference.object {
+            octocrab::models::repos::Object::Commit { sha, .. } => sha.clone(),
+            octocrab::models::repos::Object::Tag { sha, .. } => sha.clone(),
+            _ => return Err(McpError::Other(anyhow::anyhow!("Unexpected object type"))),
+        };
+
+        let output = kodegen_mcp_schema::github::GitHubCreateBranchOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            branch_name: args.branch_name.clone(),
+            sha: sha.clone(),
+            message: format!("Branch '{}' created from {}", args.branch_name, args.sha),
+        };
+
+        let display = format!(
+            "✅ Branch Created\n\n\
+             Repository: {}/{}\n\
+             Branch: {}\n\
+             From: {}\n\
+             SHA: {}",
+            output.owner,
+            output.repo,
+            output.branch_name,
+            args.sha,
+            output.sha
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&reference)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

@@ -1,9 +1,9 @@
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{GetPullRequestFilesArgs, GITHUB_GET_PULL_REQUEST_FILES};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use serde_json;
 
 use crate::GitHubClient;
 
@@ -38,7 +38,8 @@ impl Tool for GetPullRequestFilesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -48,7 +49,11 @@ impl Tool for GetPullRequestFilesTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
 
-        let mut file_stream = client.get_pull_request_files(args.owner, args.repo, args.pr_number);
+        // Clone owner and repo once for reuse
+        let owner = args.owner.clone();
+        let repo = args.repo.clone();
+
+        let mut file_stream = client.get_pull_request_files(owner.clone(), repo.clone(), args.pr_number);
 
         let mut files = Vec::new();
         while let Some(result) = file_stream.next().await {
@@ -57,32 +62,61 @@ impl Tool for GetPullRequestFilesTool {
             files.push(file);
         }
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+        // Convert octocrab files to typed output
+        let pr_files: Vec<kodegen_mcp_schema::github::GitHubPrFile> = files
+            .iter()
+            .map(|f| {
+                // Convert DiffEntryStatus to string using serde serialization
+                let status = serde_json::to_value(&f.status)
+                    .ok()
+                    .and_then(|v| v.as_str().map(String::from))
+                    .unwrap_or_else(|| format!("{:?}", f.status));
+                
+                kodegen_mcp_schema::github::GitHubPrFile {
+                    filename: f.filename.clone(),
+                    status,
+                    additions: f.additions as u32,
+                    deletions: f.deletions as u32,
+                    changes: f.changes as u32,
+                    patch: f.patch.clone(),
+                }
+            })
+            .collect();
 
-        // Content[0]: Human-Readable Summary
-        let total_additions: usize = files.iter().map(|f| f.additions as usize).sum();
-        let total_deletions: usize = files.iter().map(|f| f.deletions as usize).sum();
+        let count = pr_files.len();
+        let total_additions: u32 = pr_files.iter().map(|f| f.additions).sum();
+        let total_deletions: u32 = pr_files.iter().map(|f| f.deletions).sum();
 
-        let summary = format!(
-            "\x1b[36m PR Files: #{}\x1b[0m\n  Changed: {} · +{} -{}",
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubGetPrFilesOutput {
+            success: true,
+            owner,
+            repo: repo.clone(),
+            pr_number: args.pr_number,
+            count,
+            files: pr_files.clone(),
+        };
+
+        // Build human-readable display
+        let display = format!(
+            "📄 PR #{} Files: {}/{}\n\n\
+             {} files changed\n\
+             +{} additions / -{} deletions\n\n\
+             {}",
             args.pr_number,
-            files.len(),
+            output.owner,
+            repo,
+            count,
             total_additions,
-            total_deletions
+            total_deletions,
+            pr_files.iter()
+                .map(|f| format!("  • {} [{}] (+{} -{})", 
+                    f.filename, f.status, f.additions, f.deletions))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let metadata = json!({
-            "files": files,
-            "count": files.len()
-        });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

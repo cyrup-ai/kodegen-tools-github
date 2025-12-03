@@ -1,10 +1,14 @@
 //! GitHub multiple files push tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{PushFilesArgs, PushFilesPromptArgs, GITHUB_PUSH_FILES};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
-use serde_json::Value;
+use kodegen_mcp_schema::github::{
+    PushFilesArgs,
+    PushFilesPromptArgs,
+    GitHubPushFilesOutput,
+    GITHUB_PUSH_FILES
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 
 /// Tool for pushing multiple files to a GitHub repository in a single commit
 #[derive(Clone)]
@@ -40,7 +44,7 @@ impl Tool for PushFilesTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
@@ -109,14 +113,20 @@ impl Tool for PushFilesTool {
             more_indicator
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&commit)
-            .unwrap_or_else(|_| "{}".to_string());
-        
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Build typed output
+        let output = GitHubPushFilesOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            branch: args.branch,
+            message: args.message,
+            file_count,
+            file_paths,
+            commit_sha: commit.sha.unwrap_or_default(),
+            commit_url: commit.html_url.unwrap_or_default(),
+        };
+
+        Ok(ToolResponse::new(summary, output))
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {

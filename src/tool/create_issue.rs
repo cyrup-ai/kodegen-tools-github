@@ -1,9 +1,11 @@
 //! GitHub issue creation tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{CreateIssueArgs, CreateIssuePromptArgs, GITHUB_CREATE_ISSUE};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::github::{
+    CreateIssueArgs, CreateIssuePromptArgs, GitHubCreateIssueOutput, GITHUB_CREATE_ISSUE,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for creating GitHub issues
 #[derive(Clone)]
@@ -38,7 +40,7 @@ impl Tool for CreateIssueTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -56,10 +58,10 @@ impl Tool for CreateIssueTool {
             .create_issue(
                 args.owner.clone(),
                 args.repo.clone(),
-                args.title,
-                args.body,
-                args.assignees,
-                args.labels,
+                args.title.clone(),
+                args.body.clone(),
+                args.assignees.clone(),
+                args.labels.clone(),
             )
             .await;
 
@@ -71,26 +73,25 @@ impl Tool for CreateIssueTool {
         let issue =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+        let output = GitHubCreateIssueOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            issue_number: issue.number,
+            html_url: issue.html_url.to_string(),
+            message: format!("Issue #{} created successfully", issue.number),
+        };
 
-        // Content[0]: Human-Readable Summary
-        let summary = format!(
-            "\x1b[32m󰌃 Issue Created: #{}\x1b[0m\n\
-             󰋼 Repo: {}/{} · Title: {}",
+        let display = format!(
+            "Successfully created issue #{} in {}/{}:\n  Title: {}\n  URL: {}",
             issue.number,
             args.owner,
             args.repo,
-            issue.title
+            args.title,
+            issue.html_url
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&issue)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -142,6 +143,12 @@ impl Tool for CreateIssueTool {
                        \"labels\": [\"bug\", \"priority-high\"],\n\
                        \"assignees\": [\"octocat\"]\n\
                      })\n\n\
+                     Returns GitHubCreateIssueOutput with:\n\
+                     - success: boolean\n\
+                     - owner, repo: repository info\n\
+                     - issue_number: the created issue number\n\
+                     - html_url: link to the issue\n\
+                     - message: success message\n\n\
                      Requirements:\n\
                      - GITHUB_TOKEN environment variable must be set\n\
                      - Token needs 'repo' scope for private repos, 'public_repo' for public\n\

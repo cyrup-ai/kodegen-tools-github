@@ -3,11 +3,11 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{
-    ListPullRequestsArgs, ListPullRequestsPromptArgs, GITHUB_LIST_PULL_REQUESTS,
+    ListPullRequestsArgs, ListPullRequestsPromptArgs, GitHubListPrsOutput, GitHubPrSummary,
+    GITHUB_LIST_PULL_REQUESTS,
 };
-use kodegen_mcp_tool::{error::McpError, Tool, ToolExecutionContext};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_tool::{error::McpError, Tool, ToolExecutionContext, ToolResponse};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::github::ListPullRequestsRequest;
 
@@ -45,7 +45,7 @@ impl Tool for ListPullRequestsTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -72,16 +72,12 @@ impl Tool for ListPullRequestsTool {
         // Convert per_page to u8 (GitHub API expects u8)
         let per_page = args.per_page.map(|p| p.min(100) as u8);
 
-        // Clone values before moving them
-        let owner = args.owner.clone();
-        let repo = args.repo.clone();
-
         // Build request
         let request = ListPullRequestsRequest {
-            owner: args.owner,
-            repo: args.repo,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
             state,
-            labels: args.labels,
+            labels: args.labels.clone(),
             sort: None,
             direction: None,
             page: args.page,
@@ -98,39 +94,59 @@ impl Tool for ListPullRequestsTool {
             pull_requests.push(pr);
         }
 
-        // Count open and closed pull requests
-        let open_count = pull_requests
+        // Convert to typed output
+        let pr_summaries: Vec<GitHubPrSummary> = pull_requests
             .iter()
-            .filter(|pr| matches!(pr.state, Some(octocrab::models::IssueState::Open)))
-            .count();
-        let closed_count = pull_requests
-            .iter()
-            .filter(|pr| matches!(pr.state, Some(octocrab::models::IssueState::Closed)))
-            .count();
-        let total_count = pull_requests.len();
+            .map(|pr| {
+                let state_str = match pr.state {
+                    Some(octocrab::models::IssueState::Open) => "open",
+                    Some(octocrab::models::IssueState::Closed) => "closed",
+                    _ => "unknown",
+                };
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+                let author = pr.user.as_ref()
+                    .map(|u| u.login.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
 
-        // Content[0]: Human-Readable Summary
-        // Line 1: Status Header with ANSI cyan color and Nerd Font icon
-        // Line 2: Summary Statistics with info icon
-        let summary = format!(
-            "\x1b[36m 🔀 Pull Requests: {}/{}\x1b[0m\n  ℹ️  Total: {} · Open: {} · Closed: {}",
-            owner, repo, total_count, open_count, closed_count
+                let head_ref = pr.head.ref_field.clone();
+                let base_ref = pr.base.ref_field.clone();
+
+                let created_at = pr.created_at
+                    .map(|d| d.to_rfc3339())
+                    .unwrap_or_default();
+
+                GitHubPrSummary {
+                    number: pr.number,
+                    title: pr.title.clone().unwrap_or_default(),
+                    state: state_str.to_string(),
+                    author,
+                    head_ref,
+                    base_ref,
+                    created_at,
+                    draft: pr.draft.unwrap_or(false),
+                }
+            })
+            .collect();
+
+        let output = GitHubListPrsOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            count: pr_summaries.len(),
+            pull_requests: pr_summaries,
+        };
+
+        // Build display string
+        let state_filter = args.state.as_deref().unwrap_or("all");
+        let display = format!(
+            "Successfully listed {} pull request(s) from {}/{} (state: {})",
+            output.count,
+            args.owner,
+            args.repo,
+            state_filter
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let metadata = json!({
-            "pull_requests": pull_requests,
-            "count": pull_requests.len()
-        });
-        let json_str =
-            serde_json::to_string_pretty(&metadata).unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -161,26 +177,20 @@ impl Tool for ListPullRequestsTool {
                      list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\"})\n\n\
                      Filter by state:\n\
                      list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\n\
-                     Filter by labels (multiple labels = AND logic):\n\
-                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\", \"priority-high\"]})\n\n\
+                     Filter by labels:\n\
+                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\"]})\n\n\
                      With pagination:\n\
                      list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50, \"page\": 2})\n\n\
-                     Combined filters:\n\
-                     list_pull_requests({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"open\",\n\
-                       \"labels\": [\"bug\"],\n\
-                       \"per_page\": 20\n\
-                     })\n\n\
-                     Filter options:\n\
-                     - state: \"open\" (default), \"closed\", or \"all\"\n\
-                     - labels: Array of label names (matches PRs with ALL labels)\n\
-                     - per_page: Results per page (max 100, default 30)\n\
-                     - page: Page number for pagination\n\n\
-                     Requirements:\n\
-                     - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'repo' scope for private repos",
+                     Returns GitHubListPrsOutput with:\n\
+                     - success: boolean\n\
+                     - owner, repo: repository info\n\
+                     - count: number of PRs returned\n\
+                     - pull_requests: array of GitHubPrSummary objects\n\n\
+                     Each GitHubPrSummary contains:\n\
+                     - number, title, state, author\n\
+                     - head_ref, base_ref: source and target branches\n\
+                     - created_at: timestamp\n\
+                     - draft: boolean",
                 ),
             },
         ])

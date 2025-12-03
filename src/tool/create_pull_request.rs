@@ -1,7 +1,9 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
-use kodegen_mcp_schema::github::{CreatePullRequestArgs, GITHUB_CREATE_PULL_REQUEST};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::github::{
+    CreatePullRequestArgs, GitHubCreatePrOutput, GITHUB_CREATE_PULL_REQUEST,
+};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 use crate::github::CreatePullRequestRequest;
@@ -37,7 +39,7 @@ impl Tool for CreatePullRequestTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -50,8 +52,8 @@ impl Tool for CreatePullRequestTool {
         let request = CreatePullRequestRequest {
             owner: args.owner.clone(),
             repo: args.repo.clone(),
-            title: args.title,
-            body: args.body,
+            title: args.title.clone(),
+            body: args.body.clone(),
             head: args.head.clone(),
             base: args.base.clone(),
             draft: args.draft,
@@ -66,95 +68,74 @@ impl Tool for CreatePullRequestTool {
         let pr =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+        let html_url = pr.html_url
+            .as_ref()
+            .map(|u| u.to_string())
+            .unwrap_or_default();
 
-        // Content[0]: Human-Readable Summary
-        let summary = format!(
-            "\x1b[32m󰊤 PR Created: #{}\x1b[0m\n\
-             󰓫 Title: {} · {} → {}",
+        let output = GitHubCreatePrOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: pr.number,
+            html_url: html_url.clone(),
+            message: format!("Pull request #{} created successfully", pr.number),
+        };
+
+        let display = format!(
+            "Successfully created Pull Request #{} in {}/{}\n\
+            Title: {}\n\
+            Base: {} <- Head: {}\n\
+            URL: {}\n\
+            Status: {}",
             pr.number,
-            pr.title.as_ref().map_or("(no title)", |t| t.as_str()),
+            args.owner,
+            args.repo,
+            args.title,
+            args.base,
             args.head,
-            args.base
+            html_url,
+            if args.draft.unwrap_or(false) { "Draft" } else { "Ready for review" }
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&pr)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
         Ok(vec![PromptMessage {
             role: PromptMessageRole::User,
             content: PromptMessageContent::text(
-                r#"# GitHub Pull Request Creation Examples
-
-## Basic Pull Request
-To create a simple pull request:
-
-```json
-{
-  "owner": "octocat",
-  "repo": "hello-world",
-  "title": "Add new feature",
-  "body": "This PR adds a new feature that...",
-  "head": "feature-branch",
-  "base": "main"
-}
-```
-
-## Draft Pull Request
-To create a draft pull request:
-
-```json
-{
-  "owner": "octocat",
-  "repo": "hello-world",
-  "title": "WIP: Experimental feature",
-  "body": "This is still in progress...",
-  "head": "experimental",
-  "base": "develop",
-  "draft": true
-}
-```
-
-## Cross-Fork Pull Request
-When creating a PR from a fork:
-
-```json
-{
-  "owner": "upstream-owner",
-  "repo": "project",
-  "title": "Fix bug in authentication",
-  "body": "Fixes #123\n\nThis PR resolves the authentication issue by...",
-  "head": "fork-owner:fix-auth-bug",
-  "base": "main",
-  "maintainer_can_modify": true
-}
-```
-
-## Common Use Cases
-
-1. **Feature Development**: Create a PR from a feature branch to main/develop
-2. **Bug Fixes**: Create a PR with fixes and link to issues using "Fixes #123"
-3. **Documentation**: Create PRs for documentation updates
-4. **Draft PRs**: Use draft mode for work-in-progress that needs early feedback
-5. **Cross-Fork Contributions**: Contribute to upstream repositories from your fork
-
-## Best Practices
-
-- Write clear, descriptive titles
-- Include detailed descriptions explaining the changes
-- Reference related issues using "Fixes #123" or "Closes #456"
-- Use draft mode for incomplete work
-- Enable maintainer modifications for easier collaboration
-- Follow the repository's contribution guidelines
-"#,
+                "# GitHub Pull Request Creation Examples\n\n\
+                ## Basic Pull Request\n\
+                To create a simple pull request:\n\n\
+                ```json\n\
+                {\n\
+                  \"owner\": \"octocat\",\n\
+                  \"repo\": \"hello-world\",\n\
+                  \"title\": \"Add new feature\",\n\
+                  \"body\": \"This PR adds a new feature that...\",\n\
+                  \"head\": \"feature-branch\",\n\
+                  \"base\": \"main\"\n\
+                }\n\
+                ```\n\n\
+                ## Draft Pull Request\n\
+                To create a draft pull request:\n\n\
+                ```json\n\
+                {\n\
+                  \"owner\": \"octocat\",\n\
+                  \"repo\": \"hello-world\",\n\
+                  \"title\": \"WIP: Experimental feature\",\n\
+                  \"head\": \"experimental\",\n\
+                  \"base\": \"develop\",\n\
+                  \"draft\": true\n\
+                }\n\
+                ```\n\n\
+                Returns GitHubCreatePrOutput with:\n\
+                - success: boolean\n\
+                - owner, repo: repository info\n\
+                - pr_number: the created PR number\n\
+                - html_url: link to the PR\n\
+                - message: success message",
             ),
         }])
     }

@@ -1,7 +1,12 @@
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
-use kodegen_mcp_schema::github::{GetFileContentsArgs, GITHUB_GET_FILE_CONTENTS};
-use serde_json::Value;
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::github::{
+    GetFileContentsArgs, 
+    GitHubGetFileContentsOutput,
+    GitHubFileContent,
+    GitHubDirectoryEntry,
+    GITHUB_GET_FILE_CONTENTS
+};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 use anyhow;
 
 use crate::GitHubClient;
@@ -37,7 +42,9 @@ impl Tool for GetFileContentsTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError>
+    {
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
                 "GITHUB_TOKEN environment variable not set"
@@ -63,70 +70,126 @@ impl Tool for GetFileContentsTool {
         let content_vec = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
 
-        // Convert to JSON for easier manipulation
-        let contents = serde_json::to_value(&content_vec)
-            .unwrap_or(Value::Array(Vec::new()));
-
-        // Build human-readable summary with ANSI colors and Nerd Font icons
-        let ref_info = args.ref_name
-            .as_deref()
-            .unwrap_or("default branch");
-
-        let summary = if contents.is_array() && content_vec.len() > 1 {
-            // Directory listing (multiple items)
-            let total_items = content_vec.len();
-
-            format!(
-                "\x1b[36m󰈔 File: {} (directory)\x1b[0m\n\
-                 󰋼 Repo: {}/{} · Ref: {} · Items: {}",
+        // Determine if file or directory based on response structure
+        if content_vec.len() == 1 && content_vec[0].r#type == "file" {
+            // SINGLE FILE CASE
+            let file = &content_vec[0];
+            
+            // Decode base64 content
+            let content = file.decoded_content().unwrap_or_default();
+            
+            // Build display
+            let content_preview = if content.len() > 500 {
+                format!("{}...\n\n(Content truncated - {} bytes total)", 
+                    &content[..500], content.len())
+            } else {
+                content.clone()
+            };
+            
+            let display = format!(
+                "📄 File: {}\n\
+                 Repository: {}/{}\n\
+                 Ref: {}\n\
+                 Size: {} bytes\n\
+                 SHA: {}\n\n\
+                 Content:\n\
+                 {}",
                 args.path,
                 args.owner,
                 args.repo,
-                ref_info,
-                total_items
-            )
-        } else if !content_vec.is_empty() {
-            // Single file
-            let item = &contents[0];
-            let size = item.get("size")
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-
-            let sha = item.get("sha")
-                .and_then(Value::as_str)
-                .unwrap_or("N/A");
-
-            let sha_short = if sha.len() >= 7 { &sha[..7] } else { sha };
-
-            format!(
-                "\x1b[36m󰈔 File: {}\x1b[0m\n\
-                 󰋼 Repo: {}/{} · Ref: {} · Size: {} bytes · SHA: {}",
-                args.path,
-                args.owner,
-                args.repo,
-                ref_info,
-                size,
-                sha_short
-            )
+                args.ref_name.as_deref().unwrap_or("default branch"),
+                file.size,
+                &file.sha[..7],
+                content_preview
+            );
+            
+            // Build typed output
+            let output = GitHubGetFileContentsOutput {
+                success: true,
+                owner: args.owner,
+                repo: args.repo,
+                path: args.path,
+                ref_name: args.ref_name,
+                content_type: "file".to_string(),
+                file_content: Some(GitHubFileContent {
+                    name: file.name.clone(),
+                    path: file.path.clone(),
+                    sha: file.sha.clone(),
+                    size: file.size as u64,
+                    content,
+                    encoding: file.encoding.clone().unwrap_or_default(),
+                    html_url: file.html_url.clone().unwrap_or_default(),
+                    git_url: file.git_url.clone().unwrap_or_default(),
+                    download_url: file.download_url.clone(),
+                }),
+                directory_contents: None,
+            };
+            
+            Ok(ToolResponse::new(display, output))
+            
         } else {
-            format!(
-                "\x1b[36m󰈔 File: {} (empty)\x1b[0m\n\
-                 󰋼 Repo: {}/{} · Ref: {}",
+            // DIRECTORY CASE (multiple items)
+            let entries: Vec<GitHubDirectoryEntry> = content_vec.iter().map(|entry| {
+                GitHubDirectoryEntry {
+                    name: entry.name.clone(),
+                    path: entry.path.clone(),
+                    sha: entry.sha.clone(),
+                    size: entry.size as u64,
+                    entry_type: entry.r#type.clone(),
+                    html_url: entry.html_url.clone().unwrap_or_default(),
+                }
+            }).collect();
+            
+            // Build display
+            let items_preview = entries.iter()
+                .take(20)
+                .map(|e| {
+                    let icon = match e.entry_type.as_str() {
+                        "dir" => "📁",
+                        "file" => "📄",
+                        _ => "🔗"
+                    };
+                    format!("  {} {}", icon, e.name)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            
+            let more_indicator = if entries.len() > 20 {
+                format!("\n  ... and {} more items", entries.len() - 20)
+            } else {
+                String::new()
+            };
+            
+            let display = format!(
+                "📁 Directory: {}\n\
+                 Repository: {}/{}\n\
+                 Ref: {}\n\
+                 Total Items: {}\n\n\
+                 Contents:\n\
+                 {}{}",
                 args.path,
                 args.owner,
                 args.repo,
-                ref_info
-            )
-        };
-
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&contents)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+                args.ref_name.as_deref().unwrap_or("default branch"),
+                entries.len(),
+                items_preview,
+                more_indicator
+            );
+            
+            // Build typed output
+            let output = GitHubGetFileContentsOutput {
+                success: true,
+                owner: args.owner,
+                repo: args.repo,
+                path: args.path,
+                ref_name: args.ref_name,
+                content_type: "directory".to_string(),
+                file_content: None,
+                directory_contents: Some(entries),
+            };
+            
+            Ok(ToolResponse::new(display, output))
+        }
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

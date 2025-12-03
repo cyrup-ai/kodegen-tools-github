@@ -1,9 +1,11 @@
 use anyhow;
-use kodegen_mcp_schema::github::{GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs, GITHUB_GET_PULL_REQUEST_REVIEWS};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
+use kodegen_mcp_schema::github::{
+    GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs, GitHubPrReviewsOutput, GitHubReview,
+    GITHUB_GET_PULL_REQUEST_REVIEWS,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
 use octocrab::models::pulls::ReviewState;
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use tokio_stream::StreamExt;
 
 /// Tool for getting all reviews for a pull request
@@ -39,7 +41,7 @@ impl Tool for GetPullRequestReviewsTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -63,38 +65,58 @@ impl Tool for GetPullRequestReviewsTool {
             reviews.push(review);
         }
 
-        // Count reviews by state
-        let approved = reviews.iter()
-            .filter(|r| r.state == Some(ReviewState::Approved))
-            .count();
-        let changes_requested = reviews.iter()
-            .filter(|r| r.state == Some(ReviewState::ChangesRequested))
-            .count();
-        let _commented = reviews.iter()
-            .filter(|r| r.state == Some(ReviewState::Commented))
-            .count();
+        // Convert to typed output
+        let github_reviews: Vec<GitHubReview> = reviews
+            .iter()
+            .map(|r| {
+                let state_str = match r.state {
+                    Some(ReviewState::Approved) => "APPROVED",
+                    Some(ReviewState::ChangesRequested) => "CHANGES_REQUESTED",
+                    Some(ReviewState::Commented) => "COMMENTED",
+                    Some(ReviewState::Dismissed) => "DISMISSED",
+                    Some(ReviewState::Pending) => "PENDING",
+                    Some(_) => "OTHER",
+                    None => "UNKNOWN",
+                };
 
-        // Build human-readable summary (2-line standard format)
-        let summary = format!(
-            "\x1b[36m\u{f06e} PR Reviews: #{}\x1b[0m\n  \u{f05a} Total: {} · Approved: {} · Changes requested: {}",
+                let author = r.user.as_ref()
+                    .map(|u| u.login.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let submitted_at = r.submitted_at
+                    .map(|d| d.to_rfc3339())
+                    .unwrap_or_default();
+
+                GitHubReview {
+                    id: r.id.into_inner(),
+                    author,
+                    state: state_str.to_string(),
+                    body: r.body.clone(),
+                    submitted_at,
+                }
+            })
+            .collect();
+
+        let output = GitHubPrReviewsOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: args.pull_number,
+            reviews: github_reviews,
+        };
+
+        // Build user-friendly display string
+        let review_count = output.reviews.len();
+        let display = format!(
+            "Successfully retrieved {} review{} for PR #{} in {}/{}",
+            review_count,
+            if review_count == 1 { "" } else { "s" },
             args.pull_number,
-            reviews.len(),
-            approved,
-            changes_requested
+            args.owner,
+            args.repo
         );
 
-        // Serialize full metadata
-        let result = json!({
-            "reviews": reviews,
-            "count": reviews.len()
-        });
-        let json_str = serde_json::to_string_pretty(&result)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -135,23 +157,17 @@ impl Tool for GetPullRequestReviewsTool {
                        \"repo\": \"hello-world\",\n\
                        \"pull_number\": 42\n\
                      })\n\n\
-                     Returns array of reviews with:\n\
+                     Returns GitHubPrReviewsOutput with:\n\
+                     - success: boolean\n\
+                     - owner, repo: repository info\n\
+                     - pr_number: the PR number\n\
+                     - reviews: array of GitHubReview objects\n\n\
+                     Each GitHubReview contains:\n\
                      - id: Review ID\n\
-                     - user: Reviewer username and profile\n\
-                     - body: Review comment text\n\
+                     - author: Reviewer username\n\
                      - state: \"APPROVED\", \"CHANGES_REQUESTED\", \"COMMENTED\", \"DISMISSED\", \"PENDING\"\n\
-                     - submitted_at: When review was submitted\n\
-                     - commit_id: SHA the review is associated with\n\n\
-                     Each review shows:\n\
-                     - Whether the reviewer approved, requested changes, or just commented\n\
-                     - Any overall review comments\n\
-                     - When it was submitted\n\
-                     - Which commit was reviewed\n\n\
-                     Use this to:\n\
-                     - Check approval status before merging\n\
-                     - See who has reviewed and their feedback\n\
-                     - Understand what changes were requested\n\
-                     - Track review history over time\n\n\
+                     - body: Review comment text\n\
+                     - submitted_at: When review was submitted\n\n\
                      Review states:\n\
                      - APPROVED: Reviewer approved the changes\n\
                      - CHANGES_REQUESTED: Reviewer wants changes before approval\n\
@@ -160,8 +176,7 @@ impl Tool for GetPullRequestReviewsTool {
                      - PENDING: Review is in progress but not submitted\n\n\
                      Requirements:\n\
                      - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'repo' scope for private repos\n\
-                     - User must have read access to the repository",
+                     - Token needs 'repo' scope for private repos",
                 ),
             },
         ])

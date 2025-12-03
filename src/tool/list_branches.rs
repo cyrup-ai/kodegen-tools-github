@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{ListBranchesArgs, GITHUB_LIST_BRANCHES};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for ListBranchesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> 
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -56,29 +58,48 @@ impl Tool for ListBranchesTool {
         let branches =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Get default branch (use first branch as fallback)
-        let default_branch = branches
-            .first()
-            .map(|b| b.name.as_str())
-            .unwrap_or("unknown");
+        // Convert octocrab branches to typed output
+        let branch_list: Vec<kodegen_mcp_schema::github::GitHubBranch> = branches
+            .iter()
+            .map(|b| kodegen_mcp_schema::github::GitHubBranch {
+                name: b.name.clone(),
+                sha: b.commit.sha.clone(),
+                protected: b.protected,
+            })
+            .collect();
 
-        // Build 2-line human-readable summary with ANSI colors and Nerd Font icons
-        let summary = format!(
-            "\x1b[36m Branches: {}/{}\x1b[0m\n 󰋼 Total: {} · Default: {}",
+        let count = branch_list.len();
+
+        // Build human-readable display with emoji
+        let branch_display = branch_list
+            .iter()
+            .map(|b| {
+                let short_sha = &b.sha[..7];
+                let protection = if b.protected { "🔒" } else { "  " };
+                format!("  {} {} - {}", protection, b.name, short_sha)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let display = format!(
+            "🌿 Branches: {}/{}\n\
+             {} branches\n\n\
+             {}",
             args.owner,
             args.repo,
-            branches.len(),
-            default_branch
+            count,
+            branch_display
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&branches)
-            .unwrap_or_else(|_| "[]".to_string());
+        let output = kodegen_mcp_schema::github::GitHubListBranchesOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            count,
+            branches: branch_list,
+        };
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

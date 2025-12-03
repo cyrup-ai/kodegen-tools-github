@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{AddPullRequestReviewCommentArgs, AddPullRequestReviewCommentPromptArgs, GITHUB_ADD_PULL_REQUEST_REVIEW_COMMENT};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for adding inline review comments to a pull request
 #[derive(Clone)]
@@ -36,7 +36,8 @@ impl Tool for AddPullRequestReviewCommentTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -75,34 +76,7 @@ impl Tool for AddPullRequestReviewCommentTool {
         let comment =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
-        let _comment_type = if args.in_reply_to.is_some() {
-            "threaded reply"
-        } else if args.start_line.is_some() {
-            "multi-line comment"
-        } else {
-            "inline comment"
-        };
-
-        let _body_preview = if args.body.len() > 80 {
-            format!("{}...", &args.body[..80])
-        } else {
-            args.body.clone()
-        };
-
-        let _location = if let Some(in_reply_to) = args.in_reply_to {
-            format!("Reply to comment #{}", in_reply_to)
-        } else if let Some(path) = &args.path {
-            if let Some(start_line) = args.start_line {
-                format!("{}:{}-{}", path, start_line, args.line.unwrap_or(0))
-            } else {
-                format!("{}:{}", path, args.line.unwrap_or(0))
-            }
-        } else {
-            "Unknown location".to_string()
-        };
-
-        // Build location string based on comment type
+        // Build location string for display
         let location_str = if let Some(in_reply_to) = args.in_reply_to {
             format!("Reply to comment #{}", in_reply_to)
         } else if let Some(path) = &args.path {
@@ -114,26 +88,34 @@ impl Tool for AddPullRequestReviewCommentTool {
                 format!("{}:Line {}", path, args.line.unwrap_or(0))
             }
         } else {
-            // Fallback (shouldn't happen for valid new comments)
             "N/A".to_string()
         };
 
-        // Build 2-line summary following established pattern
-        let summary = format!(
-            "\x1b[32m󰆾 Review Comment Added: PR #{}\x1b[0m\n\
-             󰈙 Location: {}",
-            args.pull_number,
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubAddPrReviewCommentOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: args.pull_number,
+            comment_id: comment.id.0, // Convert octocrab::models::CommentId to u64
+            message: format!("Added review comment to PR #{}", args.pull_number),
+        };
+
+        // Build human-readable display
+        let display = format!(
+            "💬 Review Comment Added\n\n\
+             Repository: {}/{}\n\
+             PR: #{}\n\
+             Comment ID: {}\n\
+             Location: {}",
+            output.owner,
+            output.repo,
+            output.pr_number,
+            output.comment_id,
             location_str
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&comment)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

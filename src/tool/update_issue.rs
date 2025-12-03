@@ -1,9 +1,11 @@
 //! GitHub issue update tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{UpdateIssueArgs, UpdateIssuePromptArgs, GITHUB_UPDATE_ISSUE};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::github::{
+    UpdateIssueArgs, UpdateIssuePromptArgs, GitHubUpdateIssueOutput, GITHUB_UPDATE_ISSUE,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::github::UpdateIssueRequest;
 
@@ -41,7 +43,7 @@ impl Tool for UpdateIssueTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -68,11 +70,11 @@ impl Tool for UpdateIssueTool {
             owner: args.owner.clone(),
             repo: args.repo.clone(),
             issue_number: args.issue_number,
-            title: args.title,
-            body: args.body,
+            title: args.title.clone(),
+            body: args.body.clone(),
             state,
-            labels: args.labels,
-            assignees: args.assignees,
+            labels: args.labels.clone(),
+            assignees: args.assignees.clone(),
             milestone: None,
         };
 
@@ -88,32 +90,53 @@ impl Tool for UpdateIssueTool {
         let issue =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let mut contents = Vec::new();
-
-        // Content[0]: Human-Readable Summary
+        // Build message based on what was updated
         let state_str = match issue.state {
             octocrab::models::IssueState::Open => "open",
             octocrab::models::IssueState::Closed => "closed",
             _ => "unknown",
         };
 
-        let summary = format!(
-            "\x1b[33m Issue Updated: #{}\x1b[0m\n\
-             󰋼 Repo: {}/{} · State: {}",
-            issue.number,
-            args.owner,
-            args.repo,
-            state_str
+        let message = format!("Issue #{} updated successfully (state: {})", issue.number, state_str);
+
+        let output = GitHubUpdateIssueOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            issue_number: args.issue_number,
+            message,
+        };
+
+        // Build display string
+        let mut updates = Vec::new();
+        if args.title.is_some() {
+            updates.push("title");
+        }
+        if args.body.is_some() {
+            updates.push("body");
+        }
+        if args.state.is_some() {
+            updates.push(format!("state ({})", state_str).leak() as &str);
+        }
+        if args.labels.is_some() {
+            updates.push("labels");
+        }
+        if args.assignees.is_some() {
+            updates.push("assignees");
+        }
+
+        let updates_str = if updates.is_empty() {
+            "no changes".to_string()
+        } else {
+            updates.join(", ")
+        };
+
+        let display = format!(
+            "Successfully updated issue #{} in {}/{}\nUpdated: {}\nCurrent state: {}",
+            args.issue_number, args.owner, args.repo, updates_str, state_str
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&issue)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -183,12 +206,6 @@ impl Tool for UpdateIssueTool {
                   \"body\": \"Revised description...\"\n\
                 })\n\n"
             );
-            if detail_level == "advanced" {
-                examples.push_str(
-                    "Update only the body:\n\
-                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"body\": \"Appended note: fixed in latest patch\"})\n\n"
-                );
-            }
         }
 
         if scope == "all" || scope == "labels" {
@@ -196,12 +213,6 @@ impl Tool for UpdateIssueTool {
                 "Replace labels:\n\
                 update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"labels\": [\"bug\", \"resolved\"]})\n\n"
             );
-            if detail_level == "advanced" {
-                examples.push_str(
-                    "Clear all labels:\n\
-                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"labels\": []})\n\n"
-                );
-            }
         }
 
         if scope == "all" || scope == "assignees" {
@@ -209,31 +220,16 @@ impl Tool for UpdateIssueTool {
                 "Update assignees:\n\
                 update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"assignees\": [\"alice\", \"bob\"]})\n\n"
             );
-            if detail_level == "advanced" {
-                examples.push_str(
-                    "Unassign everyone:\n\
-                    update_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42, \"assignees\": []})\n\n"
-                );
-            }
-        }
-
-        if scope == "all" {
-            examples.push_str(
-                "Combined update (multiple fields):\n\
-                update_issue({\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"issue_number\": 42,\n\
-                  \"state\": \"closed\",\n\
-                  \"labels\": [\"bug\", \"fixed\"],\n\
-                  \"body\": \"Fixed in PR #123\"\n\
-                })\n\n"
-            );
         }
 
         // Build notes based on include_warnings parameter
         let notes = if include_warnings {
-            "Important notes:\n\
+            "Returns GitHubUpdateIssueOutput with:\n\
+            - success: boolean\n\
+            - owner, repo: repository info\n\
+            - issue_number: the updated issue number\n\
+            - message: status message\n\n\
+            Important notes:\n\
             - All fields are optional - only specified fields are updated\n\
             - state: \"open\" or \"closed\"\n\
             - labels: REPLACES all existing labels (not additive)\n\
@@ -242,7 +238,7 @@ impl Tool for UpdateIssueTool {
             - Requires write access to the repository\n\
             - GITHUB_TOKEN environment variable must be set"
         } else {
-            "All fields are optional - only specified fields are updated"
+            "Returns GitHubUpdateIssueOutput. All fields are optional - only specified fields are updated."
         };
 
         let assistant_response = format!(

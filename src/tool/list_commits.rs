@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{ListCommitsArgs, GITHUB_LIST_COMMITS};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for ListCommitsTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> 
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -65,40 +67,70 @@ impl Tool for ListCommitsTool {
         let commits =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary with ANSI colors and Nerd Font icons
-        // Following the established codebase pattern (see search_code.rs, read_file.rs)
-
-        // Extract summary data
-        let total = commits.len();
-        let branch = args.sha.as_deref().unwrap_or("default");
-        let latest_msg = commits
-            .first()
+        // Convert octocrab commits to typed output
+        let commit_summaries: Vec<kodegen_mcp_schema::github::GitHubCommitSummary> = commits
+            .iter()
             .map(|c| {
-                let first_line = c.commit.message.lines().next().unwrap_or(&c.commit.message);
-                if first_line.len() > 50 {
-                    format!("{}...", &first_line[..50])
-                } else {
-                    first_line.to_string()
+                let author_name = c.commit.author.as_ref()
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+
+                let author_email = c.commit.author.as_ref()
+                    .and_then(|a| a.email.clone())
+                    .unwrap_or_default();
+
+                let date = c.commit.author.as_ref()
+                    .and_then(|a| a.date.as_ref())
+                    .map(|d| d.to_rfc3339())
+                    .unwrap_or_default();
+
+                kodegen_mcp_schema::github::GitHubCommitSummary {
+                    sha: c.sha.clone(),
+                    message: c.commit.message.clone(),
+                    author_name,
+                    author_email,
+                    date,
+                    html_url: c.html_url.to_string(),
                 }
             })
-            .unwrap_or_else(|| "No commits".to_string());
+            .collect();
 
-        // Format output - EXACTLY 2 lines
-        // Line 1: Cyan with git commit icon, repository context
-        // Line 2: Info icon with summary statistics
-        let summary = format!(
-            "\x1b[36m Commits: {}/{}\x1b[0m\n 󰈙 Total: {} · Branch: {} · Latest: {}",
-            args.owner, args.repo, total, branch, latest_msg
+        let count = commit_summaries.len();
+
+        // Build human-readable display with emoji
+        let preview_commits = commit_summaries
+            .iter()
+            .take(10)
+            .map(|c| {
+                let short_sha = &c.sha[..7];
+                let first_line = c.message.lines().next().unwrap_or("");
+                format!("  • {} - {} by {}", short_sha, first_line, c.author_name)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let display = format!(
+            "📜 Commit History: {}/{}\n\
+             {} commits{}\n\n\
+             {}",
+            args.owner,
+            args.repo,
+            count,
+            if count > 10 { " (showing first 10)" } else { "" },
+            preview_commits
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&commits)
-            .unwrap_or_else(|_| "[]".to_string());
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubListCommitsOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            count,
+            commits: commit_summaries,
+        };
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Return ToolResponse
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

@@ -1,7 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{SearchUsersArgs, GITHUB_SEARCH_USERS};
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,7 @@ impl Tool for SearchUsersTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -87,29 +87,57 @@ impl Tool for SearchUsersTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Extract data
+        // Convert API response to typed output
         let total_count = page.total_count.unwrap_or(0);
-        let first_user_login = page.items
-            .first()
-            .map(|u| u.login.as_str())
-            .unwrap_or("N/A");
+        let items: Vec<kodegen_mcp_schema::github::GitHubUserSearchResult> = page.items
+            .iter()
+            .map(|user| kodegen_mcp_schema::github::GitHubUserSearchResult {
+                login: user.login.clone(),
+                id: user.id.0,
+                avatar_url: user.avatar_url.to_string(),
+                html_url: user.html_url.to_string(),
+                user_type: user.r#type.clone(),
+                name: None,  // Author type doesn't have name field
+                bio: None,   // Author type doesn't have bio field
+                location: None,  // Author type doesn't have location field
+                followers: None,  // Author type doesn't have followers field
+            })
+            .collect();
 
-        // Build 2-line summary with ANSI colors and Nerd Font icons
-        let summary = format!(
-            "\x1b[36m\u{f002} User Search: {}\x1b[0m\n \u{f007} Results: {} · Top: {}",
-            args.query,
-            total_count,
-            first_user_login
+        // Build human-readable display
+        let results_text = if items.is_empty() {
+            "  No users found".to_string()
+        } else {
+            items.iter()
+                .map(|u| {
+                    let name = u.name.as_deref().unwrap_or(&u.login);
+                    let location = u.location.as_deref().unwrap_or("Unknown location");
+                    let followers = u.followers.map(|f| format!("{} followers", f)).unwrap_or_else(|| "Unknown followers".to_string());
+                    format!("  • {} (@{}) - {} - {}", name, u.login, location, followers)
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let display = format!(
+            "👥 GitHub User Search\n\n\
+             Query: {}\n\
+             Total Results: {}\n\
+             Results Returned: {}\n\n\
+             {}",
+            args.query, total_count, items.len(), results_text
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&page)
-            .unwrap_or_else(|_| "{}".to_string());
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubSearchUsersOutput {
+            success: true,
+            query: args.query,
+            total_count: total_count as u32,
+            items,
+        };
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Return ToolResponse wrapper
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

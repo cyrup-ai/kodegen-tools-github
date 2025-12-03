@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{DeleteBranchArgs, DeleteBranchPromptArgs, GITHUB_DELETE_BRANCH};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for DeleteBranchTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> 
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -55,30 +57,24 @@ impl Tool for DeleteBranchTool {
 
         api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary with ANSI colors and Nerd Font icons
-        let summary = format!(
-            "\x1b[31m Branch Deleted: {}\x1b[0m\n\
-             󰋼 Repo: {}/{} · Destructive operation completed",
-            args.branch_name,
-            args.owner,
-            args.repo
+        let output = kodegen_mcp_schema::github::GitHubDeleteBranchOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            branch_name: args.branch_name.clone(),
+            message: format!("Branch '{}' deleted successfully", args.branch_name),
+        };
+
+        let display = format!(
+            "🗑️  Branch Deleted\n\n\
+             Repository: {}/{}\n\
+             Branch: {}",
+            output.owner,
+            output.repo,
+            output.branch_name
         );
 
-        // Create success metadata
-        let metadata = serde_json::json!({
-            "branch": args.branch_name,
-            "owner": args.owner,
-            "repo": args.repo,
-            "deleted": true
-        });
-
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

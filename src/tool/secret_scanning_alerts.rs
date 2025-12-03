@@ -1,10 +1,13 @@
 //! GitHub secret scanning alerts tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{SecretScanningAlertsArgs, SecretScanningAlertsPromptArgs, GITHUB_SECRET_SCANNING_ALERTS};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
-use serde_json::Value;
+use kodegen_mcp_schema::github::{
+    SecretScanningAlertsArgs, SecretScanningAlertsPromptArgs, GITHUB_SECRET_SCANNING_ALERTS,
+    GitHubSecretScanningAlertsOutput, GitHubSecretScanningAlert,
+};
+use kodegen_mcp_schema::ToolArgs;
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
 
 /// Tool for listing secret scanning alerts in a GitHub repository
 #[derive(Clone)]
@@ -41,7 +44,7 @@ impl Tool for SecretScanningAlertsTool {
         true  // Calls external GitHub API
     }
     
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN")
             .map_err(|_| McpError::Other(anyhow::anyhow!(
@@ -71,7 +74,35 @@ impl Tool for SecretScanningAlertsTool {
         let alerts = api_result
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {}", e)))?;
 
-        // Build human-readable summary
+        // Build typed alert objects
+        let alerts: Vec<GitHubSecretScanningAlert> = alerts
+            .iter()
+            .filter_map(|alert| {
+                let number = alert.get("number")?.as_u64()?;
+                let state = alert.get("state")?.as_str()?.to_string();
+                let secret_type = alert.get("secret_type_display_name")
+                    .or_else(|| alert.get("secret_type"))
+                    ?.as_str()?.to_string();
+                let resolution = alert.get("resolution")
+                    .and_then(|r| r.as_str())
+                    .map(|s| s.to_string());
+                let created_at = alert.get("created_at")?.as_str()?.to_string();
+                let html_url = alert.get("html_url")?.as_str()?.to_string();
+                
+                Some(GitHubSecretScanningAlert {
+                    number,
+                    state,
+                    secret_type,
+                    resolution,
+                    created_at,
+                    html_url,
+                })
+            })
+            .collect();
+
+        let count = alerts.len();
+
+        // Build filters text
         let filters_applied = vec![
             args.state.as_ref().map(|s| format!("state: {}", s)),
             args.secret_type.as_ref().map(|t| format!("type: {}", t)),
@@ -88,54 +119,58 @@ impl Tool for SecretScanningAlertsTool {
             String::new()
         };
 
+        // Build alert preview
         let alert_preview = alerts
             .iter()
-            .take(5)
-            .filter_map(|alert| {
-                let number = alert.get("number")?.as_u64()?;
-                let state = alert.get("state")?.as_str()?;
-                let secret_type = alert.get("secret_type_display_name")?.as_str()?;
-                
-                let state_emoji = if state == "open" { "🔓" } else { "🔒" };
-                
-                Some(format!("  {} #{} [{}] {}", state_emoji, number, state, secret_type))
+            .take(10)
+            .map(|a| {
+                let state_emoji = if a.state == "open" { "🔓" } else { "🔒" };
+                format!("  {} #{} [{}] {} [{}]", 
+                    state_emoji, 
+                    a.number, 
+                    a.state,
+                    a.secret_type,
+                    a.resolution.as_deref().unwrap_or("unresolved"))
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        let more_indicator = if alerts.len() > 5 {
-            format!("\n  ... and {} more alerts", alerts.len() - 5)
+        let more_indicator = if count > 10 {
+            format!("\n  ... and {} more alerts", count - 10)
         } else {
             String::new()
         };
 
-        let warning_text = if alerts.iter().any(|a| a.get("state").and_then(|s| s.as_str()) == Some("open")) {
+        let warning_text = if alerts.iter().any(|a| a.state == "open") {
             "\n\n⚠️  WARNING: Open secrets found! Revoke them immediately and use environment variables or secret management."
         } else {
             ""
         };
 
-        let summary = format!(
-            "🔐 Retrieved {} secret scanning alert(s)\n\n\
-             Repository: {}/{}{}\n\n\
+        // Build display string
+        let display = format!(
+            "🔐 Secret Scanning Alerts: {}/{}\n\
+             {} alerts found{}\n\n\
              Recent alerts:\n{}{}{}",
-            alerts.len(),
             args.owner,
             args.repo,
+            count,
             filters_text,
             alert_preview,
             more_indicator,
             warning_text
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&alerts)
-            .unwrap_or_else(|_| "[]".to_string());
-        
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Build typed output
+        let output = GitHubSecretScanningAlertsOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            count,
+            alerts,
+        };
+
+        Ok(ToolResponse::new(display, output))
     }
     
     fn prompt_arguments() -> Vec<PromptArgument> {

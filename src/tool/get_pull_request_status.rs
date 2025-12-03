@@ -1,7 +1,8 @@
 use anyhow;
 use kodegen_mcp_schema::github::{GetPullRequestStatusArgs, GITHUB_GET_PULL_REQUEST_STATUS};
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::ToolArgs;
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +37,7 @@ impl Tool for GetPullRequestStatusTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -46,7 +47,7 @@ impl Tool for GetPullRequestStatusTool {
             .build()
             .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to create GitHub client: {e}")))?;
         let task_result = client
-            .get_pull_request_status(args.owner, args.repo, args.pr_number)
+            .get_pull_request_status(args.owner.clone(), args.repo.clone(), args.pr_number)
             .await;
 
         let api_result =
@@ -55,27 +56,18 @@ impl Tool for GetPullRequestStatusTool {
         let status =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let mut contents = Vec::new();
-
-        // Content[0]: Human-Readable Summary (2-line ANSI + Nerd Font format)
-
-        // Map state to lowercase string (match on enum, don't use Debug formatting)
+        // Map state to lowercase string
         let state_str = match status.pr.state {
             Some(octocrab::models::IssueState::Open) => "open",
             Some(octocrab::models::IssueState::Closed) => "closed",
             _ => "unknown",
-        };
+        }.to_string();
 
-        // Map mergeable to yes/no
-        let mergeable = if status.pr.mergeable.unwrap_or(false) { 
-            "yes" 
-        } else { 
-            "no" 
-        };
+        // Get mergeable status
+        let mergeable = status.pr.mergeable;
 
         // Map mergeable_state to check status
-        let checks = match &status.pr.mergeable_state {
+        let checks_status = match &status.pr.mergeable_state {
             Some(octocrab::models::pulls::MergeableState::Clean) => "pass",
             Some(octocrab::models::pulls::MergeableState::Unstable) => "pass",
             Some(octocrab::models::pulls::MergeableState::HasHooks) => "pass",
@@ -84,25 +76,49 @@ impl Tool for GetPullRequestStatusTool {
             Some(octocrab::models::pulls::MergeableState::Behind) => "pending",
             Some(octocrab::models::pulls::MergeableState::Draft) => "pending",
             _ => "pending",
+        }.to_string();
+
+        // Calculate check counts from combined_status
+        let statuses = &status.combined_status.statuses;
+        let checks_passed = statuses.iter()
+            .filter(|s| s.state == octocrab::models::StatusState::Success)
+            .count() as u32;
+        let checks_failed = statuses.iter()
+            .filter(|s| s.state == octocrab::models::StatusState::Failure || s.state == octocrab::models::StatusState::Error)
+            .count() as u32;
+        let checks_count = statuses.len() as u32;
+
+        let output = kodegen_mcp_schema::github::GitHubGetPrStatusOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: args.pr_number,
+            state: state_str.clone(),
+            mergeable,
+            checks_status: checks_status.clone(),
+            checks_count,
+            checks_passed,
+            checks_failed,
         };
 
-        // Build 2-line ANSI cyan output with Nerd Font icons
-        let summary = format!(
-            "\x1b[36m PR Status: #{}\x1b[0m\n\
-              State: {} · Mergeable: {} · Checks: {}",
-            status.pr.number,
-            state_str,
-            mergeable,
-            checks
+        let display = format!(
+            "🔄 PR #{} Status: {}/{}\n\n\
+             State: {}\n\
+             Mergeable: {}\n\
+             Checks: {} total ({} ✅ / {} ❌)\n\
+             Overall Status: {}",
+            output.pr_number,
+            output.owner,
+            output.repo,
+            output.state,
+            output.mergeable.map(|m| if m { "Yes" } else { "No" }).unwrap_or("Unknown"),
+            output.checks_count,
+            output.checks_passed,
+            output.checks_failed,
+            output.checks_status
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&status)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

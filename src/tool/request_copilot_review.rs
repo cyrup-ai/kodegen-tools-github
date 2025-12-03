@@ -1,8 +1,7 @@
 use anyhow;
 use kodegen_mcp_schema::github::{RequestCopilotReviewArgs, RequestCopilotReviewPromptArgs, GITHUB_REQUEST_COPILOT_REVIEW};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for requesting GitHub Copilot to review a pull request
 #[derive(Clone)]
@@ -37,7 +36,8 @@ impl Tool for RequestCopilotReviewTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -61,25 +61,27 @@ impl Tool for RequestCopilotReviewTool {
         // Handle inner Result (GitHub API error)
         api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let summary = format!(
-            "\x1b[35m Copilot Review Requested: PR #{}\x1b[0m\n\
-             󰓫 Status: pending",
-            args.pull_number
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubRequestCopilotReviewOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: args.pull_number,
+            message: format!("Copilot review requested for PR #{}", args.pull_number),
+        };
+
+        // Build human-readable display
+        let display = format!(
+            "🤖 Copilot Review Requested\n\n\
+             Repository: {}/{}\n\
+             PR: #{}\n\
+             Status: Pending",
+            output.owner,
+            output.repo,
+            output.pr_number
         );
 
-        // Serialize metadata
-        let result = json!({
-            "success": true,
-            "message": "Copilot review requested successfully"
-        });
-        let json_str = serde_json::to_string_pretty(&result)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

@@ -2,10 +2,12 @@
 
 use anyhow;
 use futures::StreamExt;
-use kodegen_mcp_schema::github::{GetIssueCommentsArgs, GetIssueCommentsPromptArgs, GITHUB_GET_ISSUE_COMMENTS};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
-use serde_json::json;
+use kodegen_mcp_schema::github::{
+    GetIssueCommentsArgs, GetIssueCommentsPromptArgs, GitHubGetIssueCommentsOutput, GitHubComment,
+    GITHUB_GET_ISSUE_COMMENTS,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for fetching all comments on a GitHub issue
 #[derive(Clone)]
@@ -41,7 +43,7 @@ impl Tool for GetIssueCommentsTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -65,35 +67,38 @@ impl Tool for GetIssueCommentsTool {
             comments.push(comment);
         }
 
-        // Build dual-content response
-        let mut contents = Vec::new();
+        // Convert to typed output
+        let github_comments: Vec<GitHubComment> = comments
+            .iter()
+            .map(|c| GitHubComment {
+                id: c.id.into_inner(),
+                author: c.user.login.clone(),
+                body: c.body.clone().unwrap_or_default(),
+                created_at: c.created_at.to_rfc3339(),
+                updated_at: c.updated_at.map(|d| d.to_rfc3339()).unwrap_or_default(),
+            })
+            .collect();
 
-        // Content[0]: Human-Readable Summary (2 lines)
-        // Get the latest comment author
-        let latest_author = comments
-            .last()
-            .map(|c| c.user.login.as_str())
-            .unwrap_or("none");
+        let output = GitHubGetIssueCommentsOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            issue_number: args.issue_number,
+            count: github_comments.len(),
+            comments: github_comments,
+        };
 
-        let summary = format!(
-            "\x1b[36m Comments: Issue #{}\x1b[0m\n\
-              Total: {} · Latest: {}",
-            args.issue_number,
-            comments.len(),
-            latest_author
+        // Build user-friendly display string
+        let display = format!(
+            "Successfully retrieved {} comment{} for issue #{} in {}/{}",
+            output.count,
+            if output.count == 1 { "" } else { "s" },
+            output.issue_number,
+            args.owner,
+            args.repo
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let metadata = json!({
-            "comments": comments,
-            "count": comments.len()
-        });
-        let json_str = serde_json::to_string_pretty(&metadata)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -137,28 +142,21 @@ impl Tool for GetIssueCommentsTool {
                     "Use the get_issue_comments tool to fetch all comments for an issue:\n\n\
                      Basic usage:\n\
                      get_issue_comments({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42})\n\n\
-                     The returned comments array includes:\n\
+                     Returns GitHubGetIssueCommentsOutput with:\n\
+                     - success: boolean\n\
+                     - owner, repo: repository info\n\
+                     - issue_number: the issue number\n\
+                     - count: number of comments\n\
+                     - comments: array of GitHubComment objects\n\n\
+                     Each GitHubComment contains:\n\
                      - id: Comment ID\n\
+                     - author: Comment author username\n\
                      - body: Comment text (Markdown)\n\
-                     - user: Author information (login, avatar_url, etc.)\n\
                      - created_at: When comment was created\n\
-                     - updated_at: When comment was last edited\n\
-                     - html_url: Link to comment on GitHub\n\
-                     - author_association: Relationship to repo (OWNER, CONTRIBUTOR, etc.)\n\n\
+                     - updated_at: When comment was last edited\n\n\
                      Comment ordering:\n\
                      - Comments are returned in chronological order (oldest first)\n\
-                     - Use the created_at timestamp to determine comment age\n\
-                     - The first comment is always the oldest\n\n\
-                     Working with comments:\n\
-                     - Identify authors by user.login field\n\
-                     - Check author_association to see if author is repo owner/maintainer\n\
-                     - Body contains Markdown - may include code blocks, @mentions, etc.\n\
-                     - Updated_at differs from created_at if comment was edited\n\n\
-                     Use cases:\n\
-                     - Read discussion history on an issue\n\
-                     - Find specific feedback from team members\n\
-                     - Check if issue has been commented on recently\n\
-                     - Extract action items from comments\n\n\
+                     - Use the created_at timestamp to determine comment age\n\n\
                      Requirements:\n\
                      - GITHUB_TOKEN environment variable must be set\n\
                      - Token needs 'repo' scope for private repos\n\

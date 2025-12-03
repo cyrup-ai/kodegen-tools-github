@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{ForkRepositoryArgs, GitHubForkRepositoryPromptArgs, GITHUB_FORK_REPOSITORY};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,7 @@ impl Tool for ForkRepositoryTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -56,26 +56,45 @@ impl Tool for ForkRepositoryTool {
         let repository =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary with ANSI colors and Nerd Font icons
-        let fork_full_name = repository.full_name.as_deref().unwrap_or("N/A");
-        let html_url = repository.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A");
+        // Extract forked repository details
+        let forked_owner = repository.owner.as_ref()
+            .map(|o| o.login.clone())
+            .unwrap_or_default();
 
-        let summary = format!(
-            "\x1b[32m Repository Forked: {}/{}\x1b[0m\n  Fork: {} · URL: {}",
-            args.owner,
-            args.repo,
-            fork_full_name,
-            html_url
+        let forked_name = repository.name.clone();
+
+        let forked_full_name = repository.full_name
+            .as_deref()
+            .unwrap_or_default()
+            .to_string();
+
+        let html_url = repository.html_url.as_ref()
+            .map(|u| u.to_string())
+            .unwrap_or_default();
+
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubForkRepoOutput {
+            success: true,
+            source_owner: args.owner.clone(),
+            source_repo: args.repo.clone(),
+            forked_owner: forked_owner.clone(),
+            forked_name: forked_name.clone(),
+            forked_full_name: forked_full_name.clone(),
+            html_url: html_url.clone(),
+            message: format!("Forked {}/{} successfully", args.owner, args.repo),
+        };
+
+        // Build human-readable display
+        let display = format!(
+            "🍴 Repository Forked\n\n\
+             Source: {}/{}\n\
+             Forked To: {}\n\
+             URL: {}",
+            output.source_owner, output.source_repo, output.forked_full_name, output.html_url
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&repository)
-            .unwrap_or_else(|_| "{}".to_string());
-
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Return ToolResponse wrapper
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

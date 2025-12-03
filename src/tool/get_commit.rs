@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{GetCommitArgs, GetCommitPromptArgs, GITHUB_GET_COMMIT};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for GetCommitTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> 
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -62,41 +64,113 @@ impl Tool for GetCommitTool {
         let commit =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
+        // Convert octocrab commit to typed output
         let author_name = commit.commit.author.as_ref()
-            .map(|a| a.name.as_str())
-            .unwrap_or("Unknown");
-        
-        let additions = commit.stats.as_ref()
-            .and_then(|s| s.additions)
-            .unwrap_or(0);
-        
-        let deletions = commit.stats.as_ref()
-            .and_then(|s| s.deletions)
-            .unwrap_or(0);
-        
-        let files_count = commit.files.as_ref()
-            .map(|f| f.len())
-            .unwrap_or(0);
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
 
-        let sha_short = &args.commit_sha[..7.min(args.commit_sha.len())];
-        let summary = format!(
-            "\x1b[36m Commit: {}\x1b[0m\n  Author: {} · Files: {} · +{} -{}",
-            sha_short,
+        let author_email = commit.commit.author.as_ref()
+            .and_then(|a| a.email.clone())
+            .unwrap_or_default();
+
+        let committer_name = commit.commit.committer.as_ref()
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
+
+        let committer_email = commit.commit.committer.as_ref()
+            .and_then(|c| c.email.clone())
+            .unwrap_or_default();
+
+        let author_date = commit.commit.author.as_ref()
+            .and_then(|a| a.date.as_ref())
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_default();
+
+        let commit_date = commit.commit.committer.as_ref()
+            .and_then(|c| c.date.as_ref())
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_default();
+
+        let parents: Vec<String> = commit.parents
+            .iter()
+            .filter_map(|p| p.sha.clone())
+            .collect();
+
+        let stats = commit.stats.as_ref().map(|s| {
+            kodegen_mcp_schema::github::GitHubCommitStats {
+                additions: s.additions.unwrap_or(0) as u32,
+                deletions: s.deletions.unwrap_or(0) as u32,
+                total: s.total.unwrap_or(0) as u32,
+            }
+        });
+
+        let files: Vec<kodegen_mcp_schema::github::GitHubCommitFile> = commit.files
+            .as_ref()
+            .map(|files| {
+                files.iter().map(|f| {
+                    // Convert DiffEntryStatus to string using serde serialization
+                    let status = serde_json::to_value(&f.status)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_else(|| format!("{:?}", f.status));
+                    
+                    kodegen_mcp_schema::github::GitHubCommitFile {
+                        filename: f.filename.clone(),
+                        status,
+                        additions: f.additions as u32,
+                        deletions: f.deletions as u32,
+                        changes: f.changes as u32,
+                        patch: f.patch.clone(),
+                    }
+                }).collect()
+            })
+            .unwrap_or_default();
+
+        let commit_detail = kodegen_mcp_schema::github::GitHubCommitDetail {
+            sha: commit.sha.clone(),
+            message: commit.commit.message.clone(),
             author_name,
-            files_count,
+            author_email,
+            committer_name,
+            committer_email,
+            author_date,
+            commit_date,
+            parents,
+            html_url: commit.html_url.to_string(),
+            stats,
+            files,
+        };
+
+        let files_changed = commit_detail.files.len();
+        let additions = commit_detail.stats.as_ref().map(|s| s.additions).unwrap_or(0);
+        let deletions = commit_detail.stats.as_ref().map(|s| s.deletions).unwrap_or(0);
+
+        let display = format!(
+            "📝 Commit Details\n\n\
+             SHA: {}\n\
+             Author: {} <{}>\n\
+             Date: {}\n\
+             Message: {}\n\n\
+             Files Changed: {}\n\
+             +{} -{} total changes",
+            commit_detail.sha,
+            commit_detail.author_name,
+            commit_detail.author_email,
+            commit_detail.author_date,
+            commit_detail.message,
+            files_changed,
             additions,
             deletions
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&commit)
-            .unwrap_or_else(|_| "{}".to_string());
+        let output = kodegen_mcp_schema::github::GitHubGetCommitOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            commit: commit_detail,
+        };
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

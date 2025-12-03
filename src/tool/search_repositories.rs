@@ -1,8 +1,8 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{SearchRepositoriesArgs, SearchRepositoriesPromptArgs, GITHUB_SEARCH_REPOSITORIES};
 use octocrab::Octocrab;
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for searching GitHub repositories
 pub struct SearchRepositoriesTool;
@@ -35,7 +35,7 @@ impl Tool for SearchRepositoriesTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -69,36 +69,63 @@ impl Tool for SearchRepositoriesTool {
             .await
             .map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary
+        // Convert API response to typed output
         let total_count = page.total_count.unwrap_or(0);
-        let items = &page.items;
+        let items: Vec<kodegen_mcp_schema::github::GitHubRepoSearchResult> = page.items
+            .iter()
+            .map(|repo| kodegen_mcp_schema::github::GitHubRepoSearchResult {
+                full_name: repo.full_name.clone().unwrap_or_default(),
+                name: repo.name.clone(),
+                owner: repo.owner.as_ref().map(|o| o.login.clone()).unwrap_or_default(),
+                description: repo.description.clone(),
+                html_url: repo.html_url.as_ref().map(|u| u.to_string()).unwrap_or_default(),
+                language: repo.language.as_ref().and_then(|v| v.as_str()).map(|s| s.to_string()),
+                stars: repo.stargazers_count.unwrap_or(0),
+                forks: repo.forks_count.unwrap_or(0),
+                watchers: repo.watchers_count.unwrap_or(0),
+                open_issues: repo.open_issues_count.unwrap_or(0),
+                created_at: repo.created_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                updated_at: repo.updated_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                pushed_at: repo.pushed_at.map(|dt| dt.to_rfc3339()),
+                topics: repo.topics.clone().unwrap_or_default(),
+                archived: repo.archived.unwrap_or(false),
+                fork: repo.fork.unwrap_or(false),
+            })
+            .collect();
 
-        let summary = if items.is_empty() {
-            format!(
-                "\x1b[36m Repository Search: {}\x1b[0m\n 󰋗 Results: {} · Top: N/A",
-                args.query,
-                total_count
-            )
+        // Build human-readable display
+        let results_text = if items.is_empty() {
+            "  No repositories found".to_string()
         } else {
-            let first_repo = items[0].full_name.as_deref().unwrap_or("N/A");
-            let first_stars = items[0].stargazers_count.unwrap_or(0);
-            format!(
-                "\x1b[36m Repository Search: {}\x1b[0m\n 󰋗 Results: {} · Top: {} ⭐ {}",
-                args.query,
-                total_count,
-                first_repo,
-                first_stars
-            )
+            items.iter()
+                .map(|r| {
+                    let desc = r.description.as_deref().unwrap_or("No description");
+                    let lang = r.language.as_deref().unwrap_or("Unknown");
+                    format!("  • {} - ⭐ {} - {} - {}", r.full_name, r.stars, lang, desc)
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&page)
-            .unwrap_or_else(|_| "{}".to_string());
+        let display = format!(
+            "🔍 GitHub Repository Search\n\n\
+             Query: {}\n\
+             Total Results: {}\n\
+             Results Returned: {}\n\n\
+             {}",
+            args.query, total_count, items.len(), results_text
+        );
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubSearchReposOutput {
+            success: true,
+            query: args.query,
+            total_count: total_count as u32,
+            items,
+        };
+
+        // Return ToolResponse wrapper
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {

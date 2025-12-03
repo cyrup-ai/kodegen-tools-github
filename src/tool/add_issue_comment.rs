@@ -1,9 +1,12 @@
 //! GitHub issue comment addition tool
 
 use anyhow;
-use kodegen_mcp_schema::github::{AddIssueCommentArgs, AddIssueCommentPromptArgs, GITHUB_ADD_ISSUE_COMMENT};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::github::{
+    AddIssueCommentArgs, AddIssueCommentPromptArgs, GitHubAddIssueCommentOutput,
+    GITHUB_ADD_ISSUE_COMMENT,
+};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for adding comments to GitHub issues
 #[derive(Clone)]
@@ -38,7 +41,7 @@ impl Tool for AddIssueCommentTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -64,25 +67,27 @@ impl Tool for AddIssueCommentTool {
         let comment =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build dual-content response
-        let mut contents = Vec::new();
-
-        // Content[0]: Human-Readable Summary
-        let summary = format!(
-            "\x1b[32m󰬞 Comment Added: Issue #{}\x1b[0m\n\
-             󰄴 ID: {} · Author: @{}",
+        let display = format!(
+            "💬 Comment Added to Issue #{}\n\n\
+             Repository: {}/{}\n\
+             Comment ID: {}\n\
+             ✅ Comment added successfully",
             args.issue_number,
-            comment.id,
-            comment.user.login.as_str()
+            args.owner,
+            args.repo,
+            comment.id
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON
-        let json_str = serde_json::to_string_pretty(&comment)
-            .map_err(|e| McpError::Other(anyhow::anyhow!("Failed to serialize comment: {e}")))?;
-        contents.push(Content::text(json_str));
+        let output = GitHubAddIssueCommentOutput {
+            success: true,
+            owner: args.owner,
+            repo: args.repo,
+            issue_number: args.issue_number,
+            comment_id: comment.id.into_inner(),
+            message: format!("Comment added successfully (ID: {})", comment.id),
+        };
 
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {
@@ -133,19 +138,17 @@ impl Tool for AddIssueCommentTool {
                        \"issue_number\": 42,\n\
                        \"body\": \"Fixed in PR #123\\n\\n```python\\nprint('hello')\\n```\"\n\
                      })\n\n\
-                     With @mentions:\n\
-                     add_issue_comment({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"issue_number\": 42,\n\
-                       \"body\": \"@octocat Can you review this fix?\"\n\
-                     })\n\n\
+                     Returns GitHubAddIssueCommentOutput with:\n\
+                     - success: boolean\n\
+                     - owner, repo: repository info\n\
+                     - issue_number: the issue number\n\
+                     - comment_id: ID of the created comment\n\
+                     - message: success message\n\n\
                      Features:\n\
                      - Full Markdown support (headings, code blocks, lists, etc.)\n\
                      - @mention users to notify them\n\
                      - Reference other issues/PRs with #number\n\
-                     - Link commits with SHA hashes\n\
-                     - Add emojis with :emoji_name:\n\n\
+                     - Link commits with SHA hashes\n\n\
                      Important notes:\n\
                      - This tool CREATES a new comment each time (not idempotent)\n\
                      - Cannot edit existing comments (separate tool needed)\n\

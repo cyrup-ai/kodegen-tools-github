@@ -1,8 +1,8 @@
 use anyhow;
 use kodegen_mcp_schema::github::{CreatePullRequestReviewArgs, CreatePullRequestReviewPromptArgs, GITHUB_CREATE_PULL_REQUEST_REVIEW};
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, error::McpError};
+use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
 use octocrab::models::pulls::ReviewAction;
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 /// Tool for creating a review on a pull request
 #[derive(Clone)]
@@ -37,7 +37,8 @@ impl Tool for CreatePullRequestReviewTool {
         true // Calls external GitHub API
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError> {
         // Get GitHub token from environment
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
@@ -62,8 +63,6 @@ impl Tool for CreatePullRequestReviewTool {
             }
         };
 
-        let event_str = args.event.to_uppercase();
-
         // Build options struct
         let options = crate::CreatePullRequestReviewOptions {
             event,
@@ -85,31 +84,34 @@ impl Tool for CreatePullRequestReviewTool {
         let review =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Calculate comment word count for metadata
-        let comment_count = args.body
-            .as_deref()
-            .map(|b| b.split_whitespace().count())
-            .unwrap_or(0);
+        // Build typed output
+        let output = kodegen_mcp_schema::github::GitHubCreatePrReviewOutput {
+            success: true,
+            owner: args.owner.clone(),
+            repo: args.repo.clone(),
+            pr_number: args.pull_number,
+            review_id: review.id.0, // Convert octocrab::models::ReviewId to u64
+            event: args.event.to_uppercase(),
+            message: format!("Created {} review on PR #{}", args.event.to_uppercase(), args.pull_number),
+        };
 
-        // Build dual-content response
-        let mut contents = Vec::new();
-
-        // Content[0]: Human-Readable Summary (2-line ANSI format)
-        let summary = format!(
-            "\x1b[32m󰄬 Review Submitted: PR #{}\x1b[0m\n\
-             󰈙 Event: {} · Comments: {} words",
-            args.pull_number,
-            event_str,
-            comment_count
+        // Build human-readable display
+        let display = format!(
+            "✅ PR Review Created\n\n\
+             Repository: {}/{}\n\
+             PR: #{}\n\
+             Review ID: {}\n\
+             Event: {}\n\
+             Body: {}",
+            output.owner,
+            output.repo,
+            output.pr_number,
+            output.review_id,
+            output.event,
+            args.body.as_deref().unwrap_or("(no comment)")
         );
-        contents.push(Content::text(summary));
 
-        // Content[1]: Machine-Parseable JSON (keep existing serialization)
-        let json_str = serde_json::to_string_pretty(&review)
-            .unwrap_or_else(|_| "{}".to_string());
-        contents.push(Content::text(json_str));
-
-        Ok(contents)
+        Ok(ToolResponse::new(display, output))
     }
 
     fn prompt_arguments() -> Vec<PromptArgument> {

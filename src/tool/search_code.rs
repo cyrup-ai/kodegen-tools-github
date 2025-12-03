@@ -1,7 +1,7 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext};
+use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{SearchCodeArgs, GITHUB_SEARCH_CODE};
-use rmcp::model::{Content, PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 
@@ -36,7 +36,9 @@ impl Tool for SearchCodeTool {
         true
     }
 
-    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) -> Result<Vec<Content>, McpError> {
+    async fn execute(&self, args: Self::Args, _ctx: ToolExecutionContext) 
+        -> Result<ToolResponse<<Self::Args as kodegen_mcp_schema::ToolArgs>::Output>, McpError>
+    {
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
             McpError::Other(anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))
         })?;
@@ -63,37 +65,69 @@ impl Tool for SearchCodeTool {
         let page =
             api_result.map_err(|e| McpError::Other(anyhow::anyhow!("GitHub API error: {e}")))?;
 
-        // Build human-readable summary with ANSI colors and Nerd Font icons
+        // Convert API response to typed output
         let total_count = page.total_count.unwrap_or(0);
-        let items = &page.items;
+        let items: Vec<kodegen_mcp_schema::github::GitHubCodeSearchResult> = page.items
+            .iter()
+            .map(|item| kodegen_mcp_schema::github::GitHubCodeSearchResult {
+                name: item.name.clone(),
+                path: item.path.clone(),
+                sha: item.sha.clone(),
+                repository_full_name: item.repository.full_name.clone().unwrap_or_default(),
+                repository_owner: item.repository.owner.as_ref().map(|o| o.login.clone()).unwrap_or_default(),
+                repository_name: item.repository.name.clone(),
+                html_url: item.html_url.to_string(),
+                git_url: item.git_url.to_string(),
+                star_count: if args.enrich_stars {
+                    item.repository.stargazers_count
+                } else {
+                    None
+                },
+            })
+            .collect();
 
-        // Extract first result info or use "N/A"
-        let first_result = if let Some(first) = items.first() {
-            format!(
-                "{}/{}",
-                first.repository.full_name.as_deref().unwrap_or("N/A"),
-                first.path.as_str()
-            )
+        // Build human-readable display
+        let results_text = if items.is_empty() {
+            "  No results found".to_string()
         } else {
-            "N/A".to_string()
+            items.iter()
+                .enumerate()
+                .take(10)
+                .map(|(i, item)| format!(
+                    "  {}. {} - {}/{}\n     {}", 
+                    i + 1,
+                    item.path,
+                    item.repository_owner,
+                    item.repository_name,
+                    item.html_url
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
-        let summary = format!(
-            "\x1b[36m Code Search: {}\x1b[0m\n\
-              Results: {} · Top: {}",
-            args.query,
-            total_count,
-            first_result
+        let more_indicator = if items.len() > 10 {
+            format!("\n  ... and {} more results", items.len() - 10)
+        } else {
+            String::new()
+        };
+
+        let display = format!(
+            "🔍 GitHub Code Search\n\n\
+             Query: {}\n\
+             Total Results: {}\n\
+             Results Returned: {}\n\n\
+             {}{}",
+            args.query, total_count, items.len(), results_text, more_indicator
         );
 
-        // Serialize full metadata
-        let json_str = serde_json::to_string_pretty(&page)
-            .unwrap_or_else(|_| "{}".to_string());
+        let output = kodegen_mcp_schema::github::GitHubSearchCodeOutput {
+            success: true,
+            query: args.query,
+            total_count: total_count as u32,
+            items,
+        };
 
-        Ok(vec![
-            Content::text(summary),
-            Content::text(json_str),
-        ])
+        Ok(ToolResponse::new(display, output))
     }
 
     async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
