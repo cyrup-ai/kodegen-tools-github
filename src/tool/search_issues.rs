@@ -3,11 +3,11 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{
-    SearchIssuesArgs, SearchIssuesPromptArgs, GitHubSearchIssuesOutput, GitHubIssueSummary,
+    SearchIssuesArgs, SearchIssuesPrompts, GitHubSearchIssuesOutput,
     GITHUB_SEARCH_ISSUES,
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::github::search_issues::GitHubIssueSummary;
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 /// Tool for searching GitHub issues using GitHub's search syntax
 #[derive(Clone)]
@@ -15,7 +15,7 @@ pub struct SearchIssuesTool;
 
 impl Tool for SearchIssuesTool {
     type Args = SearchIssuesArgs;
-    type PromptArgs = SearchIssuesPromptArgs;
+    type Prompts = SearchIssuesPrompts;
 
     fn name() -> &'static str {
         GITHUB_SEARCH_ISSUES
@@ -112,93 +112,5 @@ impl Tool for SearchIssuesTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "Teaching focus area: 'basic' (repo/state searches), 'filters' (labels/people), \
-                     'advanced' (complex queries), 'pagination' (page navigation), or 'all' (comprehensive)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "include_examples".to_string(),
-                title: None,
-                description: Some(
-                    "Include comprehensive code examples (true) or concise explanations only (false)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-
-    async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        let focus_area = args.focus_area.as_deref().unwrap_or("all");
-
-        let assistant_response = match focus_area {
-            "basic" => {
-                "The search_issues tool lets you search GitHub repositories. Basic examples:\n\n\
-                 Search in specific repo:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
-                 Search by state:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world is:closed\"})\n\n\
-                 Returns GitHubSearchIssuesOutput with:\n\
-                 - success: boolean\n\
-                 - query: the search query used\n\
-                 - total_count: number of results\n\
-                 - items: array of GitHubIssueSummary objects"
-            }
-            "filters" => {
-                "Filter issues by labels, assignees, authors, and dates:\n\n\
-                 FILTER BY LABELS:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\n\
-                 FILTER BY PEOPLE:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world author:alice\"})\n\n\
-                 DATE FILTERS:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\n\
-                 Returns GitHubSearchIssuesOutput with typed results."
-            }
-            _ => {
-                "The search_issues tool uses GitHub's powerful search syntax:\n\n\
-                 BASIC SEARCHES:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world is:open\"})\n\n\
-                 FILTER BY LABELS:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world label:bug\"})\n\n\
-                 FILTER BY PEOPLE:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world assignee:octocat\"})\n\n\
-                 DATE FILTERS:\n\
-                 search_issues({\"query\": \"repo:octocat/hello-world created:>=2024-01-01\"})\n\n\
-                 COMBINED FILTERS:\n\
-                 search_issues({\n\
-                   \"query\": \"repo:octocat/hello-world is:open label:bug assignee:alice\",\n\
-                   \"sort\": \"created\",\n\
-                   \"order\": \"desc\"\n\
-                 })\n\n\
-                 Returns GitHubSearchIssuesOutput with:\n\
-                 - success: boolean\n\
-                 - query: the search query used\n\
-                 - total_count: number of results\n\
-                 - items: array of GitHubIssueSummary (number, title, state, author, created_at, labels)\n\n\
-                 IMPORTANT: Search API has stricter rate limits (30 requests/minute)"
-            }
-        };
-
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I search for GitHub issues?"),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(assistant_response),
-            },
-        ])
     }
 }

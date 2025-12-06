@@ -1,10 +1,9 @@
 use anyhow;
 use kodegen_mcp_schema::github::{
-    UpdatePullRequestArgs, UpdatePullRequestPromptArgs, GitHubUpdatePrOutput,
+    UpdatePullRequestArgs, UpdatePullRequestPrompts, GitHubUpdatePrOutput,
     GITHUB_UPDATE_PULL_REQUEST,
 };
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{McpError, Tool, ToolExecutionContext, ToolResponse};
 
 use crate::GitHubClient;
 
@@ -13,7 +12,7 @@ pub struct UpdatePullRequestTool;
 
 impl Tool for UpdatePullRequestTool {
     type Args = UpdatePullRequestArgs;
-    type PromptArgs = UpdatePullRequestPromptArgs;
+    type Prompts = UpdatePullRequestPrompts;
 
     fn name() -> &'static str {
         GITHUB_UPDATE_PULL_REQUEST
@@ -126,110 +125,5 @@ impl Tool for UpdatePullRequestTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        let content_text = match args.example_type.as_deref() {
-            Some("title") => {
-                "# GitHub Pull Request Update: Title Examples\n\n\
-                ## Update Title\n\
-                To update a pull request's title:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"title\": \"Updated: Add new feature with improvements\"\n\
-                }\n\
-                ```\n\n\
-                Returns GitHubUpdatePrOutput with success status and message."
-            }
-            Some("state") => {
-                "# GitHub Pull Request Update: State Examples\n\n\
-                ## Close a Pull Request\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"state\": \"closed\"\n\
-                }\n\
-                ```\n\n\
-                ## Reopen a Closed Pull Request\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"state\": \"open\"\n\
-                }\n\
-                ```\n\n\
-                Returns GitHubUpdatePrOutput with success status and message."
-            }
-            _ => {
-                "# GitHub Pull Request Update Examples\n\n\
-                ## Update Title\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"title\": \"Updated: Add new feature\"\n\
-                }\n\
-                ```\n\n\
-                ## Close a Pull Request\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"state\": \"closed\"\n\
-                }\n\
-                ```\n\n\
-                ## Change Base Branch\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"base\": \"develop\"\n\
-                }\n\
-                ```\n\n\
-                Returns GitHubUpdatePrOutput with:\n\
-                - success: boolean\n\
-                - owner, repo: repository info\n\
-                - pr_number: the updated PR number\n\
-                - message: status message\n\n\
-                All fields except owner, repo, and pr_number are optional."
-            }
-        };
-
-        Ok(vec![PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(content_text),
-        }])
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "example_type".to_string(),
-                title: None,
-                description: Some(
-                    "Type of update example to focus on: 'title', 'body', 'state', 'base', 'maintainer', 'combined', or omit for all"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "show_gotchas".to_string(),
-                title: None,
-                description: Some(
-                    "Set to true to include common gotchas and error cases"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
     }
 }

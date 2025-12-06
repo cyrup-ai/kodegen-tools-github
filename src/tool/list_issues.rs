@@ -3,11 +3,11 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{
-    ListIssuesArgs, ListIssuesPromptArgs, GitHubListIssuesOutput, GitHubIssueSummary,
+    ListIssuesArgs, ListIssuesPrompts, GitHubListIssuesOutput,
     GITHUB_LIST_ISSUES,
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::github::GitHubIssueSummary;
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 use crate::github::ListIssuesRequest;
 
@@ -17,7 +17,7 @@ pub struct ListIssuesTool;
 
 impl Tool for ListIssuesTool {
     type Args = ListIssuesArgs;
-    type PromptArgs = ListIssuesPromptArgs;
+    type Prompts = ListIssuesPrompts;
 
     fn name() -> &'static str {
         GITHUB_LIST_ISSUES
@@ -134,75 +134,5 @@ impl Tool for ListIssuesTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "Optional focus area for examples: 'filtering' (state/labels/assignee), \
-                     'pagination' (page/per_page), 'advanced' (combined filters), or 'all' (comprehensive)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-
-    async fn prompt(&self, args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        let assistant_response = match args.focus_area.as_deref() {
-            Some("filtering") => {
-                "Use the list_issues tool to filter repository issues by state, labels, and assignee:\n\n\
-                 Filter by state:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"open\"})\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"all\"})\n\n\
-                 Filter by labels (multiple labels = AND logic):\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\"]})\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\", \"priority-high\"]})\n\n\
-                 Returns GitHubListIssuesOutput with:\n\
-                 - success: boolean\n\
-                 - owner, repo: repository info\n\
-                 - count: number of issues returned\n\
-                 - issues: array of GitHubIssueSummary objects"
-            }
-            Some("pagination") => {
-                "Use the list_issues tool to paginate through repository issues:\n\n\
-                 Customize results per page:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50})\n\n\
-                 Navigate to specific pages:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"page\": 2, \"per_page\": 20})\n\n\
-                 Returns GitHubListIssuesOutput with paginated results."
-            }
-            _ => {
-                "Use the list_issues tool to list and filter repository issues:\n\n\
-                 List all open issues:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\"})\n\n\
-                 Filter by state:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\n\
-                 Filter by labels:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\"]})\n\n\
-                 With pagination:\n\
-                 list_issues({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50, \"page\": 2})\n\n\
-                 Returns GitHubListIssuesOutput with:\n\
-                 - success: boolean\n\
-                 - owner, repo: repository info\n\
-                 - count: number of issues returned\n\
-                 - issues: array of GitHubIssueSummary (number, title, state, author, created_at, labels)"
-            }
-        };
-
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I list and filter GitHub issues?"),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(assistant_response),
-            },
-        ])
     }
 }

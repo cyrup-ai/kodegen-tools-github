@@ -1,11 +1,10 @@
 use anyhow;
 use kodegen_mcp_schema::github::{
-    GetPullRequestReviewsArgs, GetPullRequestReviewsPromptArgs, GitHubPrReviewsOutput, GitHubReview,
+    GetPullRequestReviewsArgs, GetPullRequestReviewsPrompts, GitHubPrReviewsOutput, GitHubReview,
     GITHUB_GET_PULL_REQUEST_REVIEWS,
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 use octocrab::models::pulls::ReviewState;
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 use tokio_stream::StreamExt;
 
 /// Tool for getting all reviews for a pull request
@@ -14,7 +13,7 @@ pub struct GetPullRequestReviewsTool;
 
 impl Tool for GetPullRequestReviewsTool {
     type Args = GetPullRequestReviewsArgs;
-    type PromptArgs = GetPullRequestReviewsPromptArgs;
+    type Prompts = GetPullRequestReviewsPrompts;
 
     fn name() -> &'static str {
         GITHUB_GET_PULL_REQUEST_REVIEWS
@@ -117,68 +116,5 @@ impl Tool for GetPullRequestReviewsTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "Optional focus area for teaching prompt (e.g., 'approval_workflow', 'blocking_reviews', 'timeline', 'filtering')"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "use_case".to_string(),
-                title: None,
-                description: Some(
-                    "Optional use case context for examples (e.g., 'merge_gates', 'permission_checks', 'ci_integration')"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text("How do I see all reviews on a pull request?"),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use get_pull_request_reviews to see all reviews:\n\n\
-                     get_pull_request_reviews({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"pull_number\": 42\n\
-                     })\n\n\
-                     Returns GitHubPrReviewsOutput with:\n\
-                     - success: boolean\n\
-                     - owner, repo: repository info\n\
-                     - pr_number: the PR number\n\
-                     - reviews: array of GitHubReview objects\n\n\
-                     Each GitHubReview contains:\n\
-                     - id: Review ID\n\
-                     - author: Reviewer username\n\
-                     - state: \"APPROVED\", \"CHANGES_REQUESTED\", \"COMMENTED\", \"DISMISSED\", \"PENDING\"\n\
-                     - body: Review comment text\n\
-                     - submitted_at: When review was submitted\n\n\
-                     Review states:\n\
-                     - APPROVED: Reviewer approved the changes\n\
-                     - CHANGES_REQUESTED: Reviewer wants changes before approval\n\
-                     - COMMENTED: Reviewer left comments without approval/blocking\n\
-                     - DISMISSED: Review was dismissed (no longer valid)\n\
-                     - PENDING: Review is in progress but not submitted\n\n\
-                     Requirements:\n\
-                     - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'repo' scope for private repos",
-                ),
-            },
-        ])
     }
 }

@@ -3,12 +3,11 @@
 use anyhow;
 use kodegen_mcp_schema::github::{
     PushFilesArgs,
-    PushFilesPromptArgs,
+    PushFilesPrompts,
     GitHubPushFilesOutput,
     GITHUB_PUSH_FILES
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 /// Tool for pushing multiple files to a GitHub repository in a single commit
 #[derive(Clone)]
@@ -16,7 +15,7 @@ pub struct PushFilesTool;
 
 impl Tool for PushFilesTool {
     type Args = PushFilesArgs;
-    type PromptArgs = PushFilesPromptArgs;
+    type Prompts = PushFilesPrompts;
     
     fn name() -> &'static str {
         GITHUB_PUSH_FILES
@@ -127,78 +126,5 @@ impl Tool for PushFilesTool {
         };
 
         Ok(ToolResponse::new(summary, output))
-    }
-    
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "use_case".to_string(),
-                title: None,
-                description: Some(
-                    "Optional use case to focus examples on: 'bulk_setup' (initial repo setup), \
-                     'binary_files' (images, binaries), or 'encoding' (base64 workflows)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "focus".to_string(),
-                title: None,
-                description: Some(
-                    "Optional feature to focus on: 'atomicity' (transaction guarantees), \
-                     'base64' (encoding/decoding), or 'permissions' (GitHub token scopes)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-    
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I push multiple files to GitHub at once?"
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use push_files to commit multiple files atomically:\n\n\
-                     push_files({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"branch\": \"main\",\n\
-                       \"message\": \"Add multiple files\",\n\
-                       \"files\": {\n\
-                         \"src/file1.rs\": \"ZnVuIG1haW4oKSB7fQ==\",  // base64 of content\n\
-                         \"src/file2.rs\": \"ZnVuIGhlbHBlcigpIHt9\",\n\
-                         \"README.md\": \"IyBQcm9qZWN0\"\n\
-                       }\n\
-                     })\n\n\
-                     Important:\n\
-                     - All file content MUST be base64-encoded\n\
-                     - All files are added in a SINGLE commit\n\
-                     - Creates tree, commit, and updates ref atomically\n\
-                     - More efficient than multiple create_or_update_file calls\n\
-                     - Good for bulk operations or initial repo setup\n\n\
-                     To encode content to base64:\n\
-                     - In JavaScript: Buffer.from(text).toString('base64')\n\
-                     - In Python: base64.b64encode(text.encode()).decode()\n\
-                     - In Rust: use base64 crate\n\n\
-                     Workflow:\n\
-                     1. Prepare all file contents\n\
-                     2. Base64-encode each file's content\n\
-                     3. Create a map of {path: base64_content}\n\
-                     4. Call push_files with the map\n\n\
-                     Requirements:\n\
-                     - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'repo' scope for private repos, 'public_repo' for public\n\
-                     - User must have write access to the repository\n\
-                     - Branch must already exist"
-                ),
-            },
-        ])
     }
 }

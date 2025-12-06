@@ -1,9 +1,8 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::{McpError, Tool, ToolExecutionContext, ToolResponse};
 use kodegen_mcp_schema::github::{
-    CreatePullRequestArgs, GitHubCreatePrOutput, GITHUB_CREATE_PULL_REQUEST,
+    CreatePullRequestArgs, CreatePullRequestPrompts, GitHubCreatePrOutput, GITHUB_CREATE_PULL_REQUEST,
 };
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
 
 use crate::GitHubClient;
 use crate::github::CreatePullRequestRequest;
@@ -13,7 +12,7 @@ pub struct CreatePullRequestTool;
 
 impl Tool for CreatePullRequestTool {
     type Args = CreatePullRequestArgs;
-    type PromptArgs = ();
+    type Prompts = CreatePullRequestPrompts;
 
     fn name() -> &'static str {
         GITHUB_CREATE_PULL_REQUEST
@@ -99,55 +98,5 @@ impl Tool for CreatePullRequestTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(
-                "# GitHub Pull Request Creation Examples\n\n\
-                ## Basic Pull Request\n\
-                To create a simple pull request:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"title\": \"Add new feature\",\n\
-                  \"body\": \"This PR adds a new feature that...\",\n\
-                  \"head\": \"feature-branch\",\n\
-                  \"base\": \"main\"\n\
-                }\n\
-                ```\n\n\
-                ## Draft Pull Request\n\
-                To create a draft pull request:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"title\": \"WIP: Experimental feature\",\n\
-                  \"head\": \"experimental\",\n\
-                  \"base\": \"develop\",\n\
-                  \"draft\": true\n\
-                }\n\
-                ```\n\n\
-                Returns GitHubCreatePrOutput with:\n\
-                - success: boolean\n\
-                - owner, repo: repository info\n\
-                - pr_number: the created PR number\n\
-                - html_url: link to the PR\n\
-                - message: success message",
-            ),
-        }])
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![PromptArgument {
-            name: "scenario_focus".to_string(),
-            title: None,
-            description: Some(
-                "Which PR scenario to focus on: 'basic' (simple feature branches), 'draft' (work-in-progress), 'cross-fork' (upstream contributions), or 'all' for comprehensive examples".to_string(),
-            ),
-            required: Some(false),
-        }]
     }
 }

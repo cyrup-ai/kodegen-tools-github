@@ -2,10 +2,9 @@
 
 use anyhow;
 use kodegen_mcp_schema::github::{
-    GetIssueArgs, GetIssuePromptArgs, GitHubGetIssueOutput, GitHubIssue, GITHUB_GET_ISSUE,
+    GetIssueArgs, GetIssuePrompts, GitHubGetIssueOutput, GitHubIssue, GITHUB_GET_ISSUE,
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 /// Tool for fetching a GitHub issue by number
 #[derive(Clone)]
@@ -13,7 +12,7 @@ pub struct GetIssueTool;
 
 impl Tool for GetIssueTool {
     type Args = GetIssueArgs;
-    type PromptArgs = GetIssuePromptArgs;
+    type Prompts = GetIssuePrompts;
 
     fn name() -> &'static str {
         GITHUB_GET_ISSUE
@@ -116,80 +115,5 @@ impl Tool for GetIssueTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "detail_focus".to_string(),
-                title: None,
-                description: Some(
-                    "Focus teaching on: 'basic' (minimal usage), 'advanced' (complex patterns, response interpretation), or 'pr' (pull request specific usage)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            // Exchange 1: Basic Usage
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I fetch a specific GitHub issue?"
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use the get_issue tool to fetch a GitHub issue by its number:\n\n\
-                     BASIC USAGE:\n\
-                     get_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 42})\n\n\
-                     REQUIRED PARAMETERS:\n\
-                     - owner: Repository owner (user or organization name)\n\
-                     - repo: Repository name\n\
-                     - issue_number: The issue NUMBER (e.g., 42 from #42), NOT the internal ID\n\n\
-                     RESPONSE FORMAT (Typed Output):\n\
-                     Returns a GitHubGetIssueOutput with:\n\
-                     - success: boolean indicating success\n\
-                     - owner: repository owner\n\
-                     - repo: repository name\n\
-                     - issue: GitHubIssue object with all details\n\n\
-                     ISSUE FIELDS:\n\
-                     - number: Issue number\n\
-                     - title: Issue title\n\
-                     - body: Issue description (Markdown)\n\
-                     - state: \"open\" or \"closed\"\n\
-                     - author: Issue creator username\n\
-                     - labels: Array of label names\n\
-                     - assignees: Array of assigned usernames\n\
-                     - comments_count: Number of comments\n\
-                     - created_at, updated_at: ISO timestamps\n\
-                     - html_url: Link to issue on GitHub.com"
-                ),
-            },
-            // Exchange 2: Important Distinction - Issues vs PRs
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "Can I use get_issue to fetch pull requests?"
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Yes! On GitHub, pull requests ARE treated as issues internally, so get_issue works for both.\n\n\
-                     TO FETCH A PULL REQUEST:\n\
-                     - Use the same syntax: get_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"issue_number\": 123})\n\
-                     - It doesn't matter if #123 is a PR or issue - the endpoint returns both\n\n\
-                     WHY THIS MATTERS:\n\
-                     - Use get_issue to check if a number refers to a PR before working with it\n\
-                     - For PR-specific operations (reviews, merge), use dedicated tools\n\
-                     - This tool returns the same data structure for both"
-                ),
-            },
-        ])
     }
 }

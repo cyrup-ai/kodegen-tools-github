@@ -3,11 +3,10 @@
 use anyhow;
 use futures::StreamExt;
 use kodegen_mcp_schema::github::{
-    ListPullRequestsArgs, ListPullRequestsPromptArgs, GitHubListPrsOutput, GitHubPrSummary,
+    ListPullRequestsArgs, ListPullRequestsPrompts, GitHubListPrsOutput, GitHubPrSummary,
     GITHUB_LIST_PULL_REQUESTS,
 };
-use kodegen_mcp_tool::{error::McpError, Tool, ToolExecutionContext, ToolResponse};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{McpError, Tool, ToolExecutionContext, ToolResponse};
 
 use crate::github::ListPullRequestsRequest;
 
@@ -17,7 +16,7 @@ pub struct ListPullRequestsTool;
 
 impl Tool for ListPullRequestsTool {
     type Args = ListPullRequestsArgs;
-    type PromptArgs = ListPullRequestsPromptArgs;
+    type Prompts = ListPullRequestsPrompts;
 
     fn name() -> &'static str {
         GITHUB_LIST_PULL_REQUESTS
@@ -147,52 +146,5 @@ impl Tool for ListPullRequestsTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![PromptArgument {
-            name: "focus_area".to_string(),
-            title: None,
-            description: Some(
-                "Optional focus area: 'overview', 'filtering', 'pagination', or 'advanced'"
-                    .to_string(),
-            ),
-            required: Some(false),
-        }]
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I list and filter GitHub pull requests?",
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use the list_pull_requests tool to list and filter repository pull requests:\n\n\
-                     List all open pull requests:\n\
-                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\"})\n\n\
-                     Filter by state:\n\
-                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"state\": \"closed\"})\n\n\
-                     Filter by labels:\n\
-                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"labels\": [\"bug\"]})\n\n\
-                     With pagination:\n\
-                     list_pull_requests({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"per_page\": 50, \"page\": 2})\n\n\
-                     Returns GitHubListPrsOutput with:\n\
-                     - success: boolean\n\
-                     - owner, repo: repository info\n\
-                     - count: number of PRs returned\n\
-                     - pull_requests: array of GitHubPrSummary objects\n\n\
-                     Each GitHubPrSummary contains:\n\
-                     - number, title, state, author\n\
-                     - head_ref, base_ref: source and target branches\n\
-                     - created_at: timestamp\n\
-                     - draft: boolean",
-                ),
-            },
-        ])
     }
 }

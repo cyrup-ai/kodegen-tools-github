@@ -1,9 +1,8 @@
 use anyhow;
 use kodegen_mcp_schema::github::{
-    MergePullRequestArgs, GitHubMergePrOutput, GITHUB_MERGE_PULL_REQUEST,
+    MergePullRequestArgs, MergePullRequestPrompts, GitHubMergePrOutput, GITHUB_MERGE_PULL_REQUEST,
 };
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{McpError, Tool, ToolExecutionContext, ToolResponse};
 
 use crate::GitHubClient;
 
@@ -12,7 +11,7 @@ pub struct MergePullRequestTool;
 
 impl Tool for MergePullRequestTool {
     type Args = MergePullRequestArgs;
-    type PromptArgs = ();
+    type Prompts = MergePullRequestPrompts;
 
     fn name() -> &'static str {
         GITHUB_MERGE_PULL_REQUEST
@@ -96,80 +95,5 @@ impl Tool for MergePullRequestTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(
-                "# GitHub Pull Request Merge Examples\n\n\
-                ## Basic Merge\n\
-                To merge a pull request with default settings:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42\n\
-                }\n\
-                ```\n\n\
-                ## Squash Merge\n\
-                To merge all commits into a single commit:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"merge_method\": \"squash\",\n\
-                  \"commit_title\": \"Add authentication feature\"\n\
-                }\n\
-                ```\n\n\
-                ## Rebase Merge\n\
-                To rebase commits onto the base branch:\n\n\
-                ```json\n\
-                {\n\
-                  \"owner\": \"octocat\",\n\
-                  \"repo\": \"hello-world\",\n\
-                  \"pr_number\": 42,\n\
-                  \"merge_method\": \"rebase\"\n\
-                }\n\
-                ```\n\n\
-                Returns GitHubMergePrOutput with:\n\
-                - success: boolean\n\
-                - owner, repo: repository info\n\
-                - pr_number: the merged PR number\n\
-                - merged: boolean indicating merge success\n\
-                - sha: the merge commit SHA (if available)\n\
-                - message: status message\n\n\
-                Merge Methods:\n\
-                - merge (default): Creates a merge commit\n\
-                - squash: Combines all commits into one\n\
-                - rebase: Rebases commits onto base branch\n\n\
-                Safety Notes:\n\
-                - This is a destructive operation\n\
-                - Cannot be easily undone\n\
-                - Use SHA parameter to prevent race conditions",
-            ),
-        }])
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "merge_strategy".to_string(),
-                title: None,
-                description: Some(
-                    "Specific merge strategy to focus examples on: 'merge', 'squash', or 'rebase'".to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "Focus area for teaching: 'basic', 'advanced', 'safety', or 'all'".to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
     }
 }

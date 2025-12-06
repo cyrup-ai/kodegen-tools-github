@@ -2,12 +2,11 @@
 
 use anyhow;
 use kodegen_mcp_schema::github::{
-    CodeScanningAlertsArgs, CodeScanningAlertsPromptArgs, GITHUB_CODE_SCANNING_ALERTS,
+    CodeScanningAlertsArgs, GITHUB_CODE_SCANNING_ALERTS,
     GitHubCodeScanningAlertsOutput, GitHubCodeScanningAlert,
 };
 use kodegen_mcp_schema::ToolArgs;
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageRole, PromptMessageContent};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 /// Tool for listing code scanning security alerts in a GitHub repository
 #[derive(Clone)]
@@ -15,7 +14,6 @@ pub struct CodeScanningAlertsTool;
 
 impl Tool for CodeScanningAlertsTool {
     type Args = CodeScanningAlertsArgs;
-    type PromptArgs = CodeScanningAlertsPromptArgs;
     
     fn name() -> &'static str {
         GITHUB_CODE_SCANNING_ALERTS
@@ -193,123 +191,5 @@ impl Tool for CodeScanningAlertsTool {
         };
 
         Ok(ToolResponse::new(display, output))
-    }
-    
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "Optional focus area for examples: 'basic' (filtering), 'dismissal' (dismissed alerts), \
-                     'analysis_tools' (CodeQL/Semgrep), 'severity' (severity interpretation), \
-                     or 'remediation' (fixing issues)"
-                        .to_string(),
-                ),
-                required: Some(false),
-            }
-        ]
-    }
-    
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            // BASIC USAGE EXAMPLE
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I get code scanning alerts for a repository?"
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use code_scanning_alerts to retrieve security alerts:\n\n\
-                     # Get all open alerts\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"open\"\n\
-                     })\n\n\
-                     # Get critical severity alerts\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"open\",\n\
-                       \"severity\": \"critical\"\n\
-                     })\n\n\
-                     # Get alerts for specific branch\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"ref_name\": \"main\",\n\
-                       \"state\": \"open\"\n\
-                     })\n\n\
-                     States: \"open\", \"closed\", \"dismissed\"\n\
-                     Severities: \"critical\", \"high\", \"medium\", \"low\", \"warning\", \"note\", \"error\"\n\n\
-                     Each alert includes:\n\
-                     - Alert number and state\n\
-                     - Severity and description\n\
-                     - Location (file, line)\n\
-                     - Tool that found it (CodeQL, etc.)\n\
-                     - Created/updated timestamps\n\
-                     - Dismissal reason (if dismissed)\n\n\
-                     Requires: GitHub Advanced Security enabled on the repository.\n\n\
-                     Requirements:\n\
-                     - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'security_events' scope\n\
-                     - Repository must have code scanning enabled\n\
-                     - User must have appropriate permissions"
-                ),
-            },
-            
-            // ADVANCED SCENARIOS: DISMISSED ALERTS & ANALYSIS TOOLS
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I work with dismissed alerts and different analysis tools?"
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "You can filter dismissed alerts and target specific analysis tools:\n\n\
-                     # Get all dismissed alerts (e.g., false positives)\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"dismissed\"\n\
-                     })\n\n\
-                     # Get alerts from specific tool only (CodeQL)\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"open\",\n\
-                       \"tool_name\": \"CodeQL\"\n\
-                     })\n\n\
-                     # Combine filters: critical CodeQL alerts on main branch\n\
-                     code_scanning_alerts({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"state\": \"open\",\n\
-                       \"severity\": \"critical\",\n\
-                       \"tool_name\": \"CodeQL\",\n\
-                       \"ref_name\": \"main\"\n\
-                     })\n\n\
-                     Common analysis tools:\n\
-                     - CodeQL: GitHub's semantic analysis engine\n\
-                     - Semgrep: Pattern-based static analysis\n\
-                     - Custom tools: Can integrate with other SAST tools\n\n\
-                     Alert states explained:\n\
-                     - \"open\": Active, needs attention\n\
-                     - \"dismissed\": Marked as not applicable (false positive, intentional, etc.)\n\
-                     - \"closed\": Fixed in the codebase\n\n\
-                     Key gotchas:\n\
-                     - Dismissed alerts may have reasons: false_positive, inaccurate, wont_fix, used_in_tests\n\
-                     - Results limited to 30 per page; pagination required for large result sets\n\
-                     - Alerts from main branch only by default; use ref_name to check other branches\n\
-                     - Closed alerts appear when code is fixed, not when manually dismissed"
-                ),
-            },
-        ])
     }
 }

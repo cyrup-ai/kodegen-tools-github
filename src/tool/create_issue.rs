@@ -2,10 +2,9 @@
 
 use anyhow;
 use kodegen_mcp_schema::github::{
-    CreateIssueArgs, CreateIssuePromptArgs, GitHubCreateIssueOutput, GITHUB_CREATE_ISSUE,
+    CreateIssueArgs, CreateIssuePrompts, GitHubCreateIssueOutput, GITHUB_CREATE_ISSUE,
 };
-use kodegen_mcp_tool::{Tool, ToolExecutionContext, ToolResponse, error::McpError};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{Tool, ToolExecutionContext, ToolResponse, McpError};
 
 /// Tool for creating GitHub issues
 #[derive(Clone)]
@@ -13,7 +12,7 @@ pub struct CreateIssueTool;
 
 impl Tool for CreateIssueTool {
     type Args = CreateIssueArgs;
-    type PromptArgs = CreateIssuePromptArgs;
+    type Prompts = CreateIssuePrompts;
 
     fn name() -> &'static str {
         GITHUB_CREATE_ISSUE
@@ -92,76 +91,5 @@ impl Tool for CreateIssueTool {
         );
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "focus_area".to_string(),
-                title: None,
-                description: Some(
-                    "What aspect of create_issue to focus on: 'basic' for core functionality, \
-                     'labels' for issue categorization, 'assignees' for team assignment, \
-                     'authentication' for GITHUB_TOKEN setup, or 'team-collaboration' for team workflows"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "use_case".to_string(),
-                title: None,
-                description: Some(
-                    "Repository context for examples: 'personal' for solo projects, \
-                     'team' for organizational repos, or 'open-source' for community projects"
-                        .to_string(),
-                ),
-                required: Some(false),
-            },
-        ]
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![
-            PromptMessage {
-                role: PromptMessageRole::User,
-                content: PromptMessageContent::text(
-                    "How do I create a GitHub issue with labels and assignees?",
-                ),
-            },
-            PromptMessage {
-                role: PromptMessageRole::Assistant,
-                content: PromptMessageContent::text(
-                    "Use the create_issue tool to create a GitHub issue:\n\n\
-                     Basic usage:\n\
-                     create_issue({\"owner\": \"octocat\", \"repo\": \"hello-world\", \"title\": \"Bug report\"})\n\n\
-                     With body and labels:\n\
-                     create_issue({\n\
-                       \"owner\": \"octocat\",\n\
-                       \"repo\": \"hello-world\",\n\
-                       \"title\": \"Bug: Login fails\",\n\
-                       \"body\": \"When I try to login, the form doesn't submit...\",\n\
-                       \"labels\": [\"bug\", \"priority-high\"],\n\
-                       \"assignees\": [\"octocat\"]\n\
-                     })\n\n\
-                     Returns GitHubCreateIssueOutput with:\n\
-                     - success: boolean\n\
-                     - owner, repo: repository info\n\
-                     - issue_number: the created issue number\n\
-                     - html_url: link to the issue\n\
-                     - message: success message\n\n\
-                     Requirements:\n\
-                     - GITHUB_TOKEN environment variable must be set\n\
-                     - Token needs 'repo' scope for private repos, 'public_repo' for public\n\
-                     - User must have write access to the repository\n\
-                     - Labels must already exist in the repository\n\
-                     - Assignees must be collaborators on the repository\n\n\
-                     Tips:\n\
-                     - Body supports Markdown formatting\n\
-                     - You can @mention users in the body\n\
-                     - Labels are case-sensitive\n\
-                     - Multiple assignees can be specified",
-                ),
-            },
-        ])
     }
 }

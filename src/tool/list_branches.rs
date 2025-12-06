@@ -1,7 +1,6 @@
 use anyhow;
-use kodegen_mcp_tool::{McpError, Tool, ToolExecutionContext, ToolResponse};
-use kodegen_mcp_schema::github::{ListBranchesArgs, GITHUB_LIST_BRANCHES};
-use rmcp::model::{PromptArgument, PromptMessage, PromptMessageContent, PromptMessageRole};
+use kodegen_mcp_schema::{McpError, Tool, ToolExecutionContext, ToolResponse};
+use kodegen_mcp_schema::github::{ListBranchesArgs, ListBranchesPrompts, GITHUB_LIST_BRANCHES};
 
 use crate::GitHubClient;
 
@@ -10,7 +9,7 @@ pub struct ListBranchesTool;
 
 impl Tool for ListBranchesTool {
     type Args = ListBranchesArgs;
-    type PromptArgs = ();
+    type Prompts = ListBranchesPrompts;
 
     fn name() -> &'static str {
         GITHUB_LIST_BRANCHES
@@ -100,97 +99,5 @@ impl Tool for ListBranchesTool {
         };
 
         Ok(ToolResponse::new(display, output))
-    }
-
-    async fn prompt(&self, _args: Self::PromptArgs) -> Result<Vec<PromptMessage>, McpError> {
-        Ok(vec![PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(
-                r#"# GitHub List Branches Examples
-
-## List All Branches
-To list all branches in a repository:
-
-```json
-{
-  "owner": "octocat",
-  "repo": "hello-world"
-}
-```
-
-## List with Pagination
-To list branches with pagination control:
-
-```json
-{
-  "owner": "octocat",
-  "repo": "hello-world",
-  "page": 1,
-  "per_page": 50
-}
-```
-
-## Response Information
-
-Each branch object includes:
-- **name**: Branch name
-- **commit**: Object with SHA and URL of the latest commit
-- **protected**: Whether the branch is protected
-
-## Common Use Cases
-
-1. **Branch Discovery**: See what branches exist in a repository
-2. **Branch Management**: Identify old or stale branches for cleanup
-3. **Development Workflow**: Check available feature branches
-4. **Release Management**: Find release or hotfix branches
-5. **Protected Branches**: Identify which branches have protection rules
-
-## Best Practices
-
-- Use pagination for repositories with many branches
-- Check the default branch (usually "main" or "master")
-- Look for branch naming patterns (feature/, hotfix/, release/)
-- Identify protected branches to understand workflow constraints
-
-## Pagination Notes
-
-- Default per_page is 30 branches
-- Maximum per_page is 100
-- Use page parameter to navigate through results
-- Check response headers for total count and next page
-
-## Branch Naming Conventions
-
-Common patterns you might find:
-- **main** or **master**: Primary branch
-- **develop**: Development integration branch
-- **feature/**: Feature branches (e.g., feature/user-auth)
-- **hotfix/**: Urgent fixes (e.g., hotfix/security-patch)
-- **release/**: Release preparation (e.g., release/v1.0.0)
-- **bugfix/**: Bug fixes (e.g., bugfix/login-error)
-"#,
-            ),
-        }])
-    }
-
-    fn prompt_arguments() -> Vec<PromptArgument> {
-        vec![
-            PromptArgument {
-                name: "detail_level".to_string(),
-                title: None,
-                description: Some(
-                    "Level of detail for examples: 'basic' (simple cases), 'advanced' (pagination, protected branches), or 'all' (comprehensive)".to_string()
-                ),
-                required: Some(false),
-            },
-            PromptArgument {
-                name: "focus".to_string(),
-                title: None,
-                description: Some(
-                    "Specific aspect to focus on: 'pagination', 'protected_branches', 'naming_conventions', 'use_cases', or 'all'".to_string()
-                ),
-                required: Some(false),
-            }
-        ]
     }
 }
