@@ -6,7 +6,7 @@
 
 GitHub API operations via Octocrab with MCP tool wrappers for AI agents.
 
-## Features
+## Features 
 
 - **Async-first**: Built on tokio for efficient async operations
 - **Clean API**: Wraps octocrab with ergonomic interfaces
