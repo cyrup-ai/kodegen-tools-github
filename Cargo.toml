@@ -1,6 +1,6 @@
 [package]
 name = "kodegen_tools_github"
-version = "0.10.1"
+version = "0.10.2"
 edition = "2024"
 description = "KODEGEN.ᴀɪ: Memory-efficient, Blazing-Fast, MCP tools for code generation agents."
 authors = ["KODEGEN.ᴀɪ"]
@@ -35,8 +35,8 @@ kodegen_config_manager = { version = "0.10" }
 kodegen_server_http = { version = "0.10" }
 
 schemars = "1"
-rmcp = { version = "0.10", features = ["client", "schemars", "server", "transport-sse-server", "transport-child-process", "transport-io", "transport-sse-client", "transport-sse-client-reqwest", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
-octocrab    = "0.47"
+rmcp = { version = "0.11", features = ["client", "schemars", "server", "transport-child-process", "transport-io", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
+octocrab    = "0.48"
 bytes       = "1"
 snafu       = "0.8"
 thiserror   = "2"
@@ -60,7 +60,7 @@ urlencoding = "2"
 semver      = "1"
 lru         = "0.16"
 tempfile    = "3"
-jsonwebtoken = "9"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 gix = { version = "0.75", default-features = false, features = [
     "blob-diff",
     "blocking-network-client",
